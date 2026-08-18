@@ -115,37 +115,59 @@ export function promotionsFromProducts(products = []) {
   const byId = new Map(products.map((p) => [p.id, p]));
 
   return products
-    .filter(
-      (p) =>
-        p.offer?.type === "gift" &&
-        Number(p.offer.buyQty) > 0 &&
-        (p.offer.giftGroups || []).some(
-          (g) => g.qty > 0 && g.productIds?.length,
-        ),
-    )
-    .map((p) => ({
+    .map((p) => ({ product: p, gift: giftConfigOf(p) }))
+    .filter(({ gift }) => gift)
+    .map(({ product: p, gift }) => ({
       id: `product-gift-${p.id}`,
-      name: `${p.name} — buy ${p.offer.buyQty}`,
-      short: `Buy ${p.offer.buyQty} free ${(p.offer.giftGroups || []).reduce(
+      name: `${p.name} — buy ${gift.buyQty}`,
+      short: `Buy ${gift.buyQty} free ${gift.giftGroups.reduce(
         (s, g) => s + Number(g.qty || 0),
         0,
       )}`,
       type: "bundle-gift",
-      require: { productIds: [p.id], qty: Number(p.offer.buyQty) },
-      gifts: (p.offer.giftGroups || [])
-        .filter((g) => g.qty > 0 && g.productIds?.length)
-        .map((g) => ({
-          productIds: g.productIds,
-          qty: Number(g.qty),
-          label:
-            g.productIds.length === 1
-              ? byId.get(g.productIds[0])?.name || "free item"
-              : `any ${g.productIds
-                  .map((id) => byId.get(id)?.name)
-                  .filter(Boolean)
-                  .join(" / ")}`,
-        })),
+      require: { productIds: [p.id], qty: Number(gift.buyQty) },
+      gifts: gift.giftGroups.map((g) => ({
+        productIds: g.productIds,
+        qty: Number(g.qty),
+        label:
+          g.productIds.length === 1
+            ? byId.get(g.productIds[0])?.name || "free item"
+            : `any ${g.productIds
+                .map((id) => byId.get(id)?.name)
+                .filter(Boolean)
+                .join(" / ")}`,
+      })),
     }));
+}
+
+/**
+ * A product's free-gift setup, if it has a usable one.
+ *
+ * This lives in its own field rather than inside `offer`, so a product can
+ * carry BOTH at once: a bulk tier that changes its own price, and a gift that
+ * hands over different products. They do unrelated jobs and there is no reason
+ * one should exclude the other — a shampoo can be 3 for RM75 *and* come with
+ * two free conditioners.
+ *
+ * `offer.type === 'gift'` is the older shape, still read so products saved
+ * before the split keep working.
+ */
+export function giftConfigOf(product) {
+  const raw =
+    product?.giftOffer ||
+    (product?.offer?.type === "gift" ? product.offer : null);
+  if (!raw) return null;
+
+  const buyQty = Number(raw.buyQty) || 0;
+  const giftGroups = (raw.giftGroups || [])
+    .map((g) => ({
+      qty: Number(g.qty) || 0,
+      productIds: (g.productIds || []).filter(Boolean),
+    }))
+    .filter((g) => g.qty > 0 && g.productIds.length);
+
+  if (buyQty <= 0 || !giftGroups.length) return null;
+  return { buyQty, giftGroups };
 }
 
 /* ────────────────────────────── the engine ────────────────────────────── */

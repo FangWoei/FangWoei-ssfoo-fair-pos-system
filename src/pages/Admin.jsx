@@ -12,6 +12,7 @@ import {
   toRMInput,
   toSen,
 } from "../lib/pricing";
+import { giftConfigOf } from "../lib/promotions";
 import { useEnterNav } from "../lib/useEnterNav";
 
 const blank = () => ({
@@ -86,11 +87,21 @@ export default function Admin({ products }) {
                 </td>
                 <td className="mono">{formatRM(p.price)}</td>
                 <td>
-                  {p.offer?.type && p.offer.type !== OFFER_NONE ? (
+                  {p.offer?.type && p.offer.type !== OFFER_NONE && (
                     <span className="tag on">{describe(p.offer)}</span>
-                  ) : (
-                    <span className="tag">None</span>
                   )}
+                  {giftConfigOf(p) && (
+                    <span className="tag gift" style={{ marginLeft: 5 }}>
+                      +
+                      {giftConfigOf(p).giftGroups.reduce(
+                        (s, g) => s + g.qty,
+                        0,
+                      )}{" "}
+                      free
+                    </span>
+                  )}
+                  {(!p.offer?.type || p.offer.type === OFFER_NONE) &&
+                    !giftConfigOf(p) && <span className="tag">None</span>}
                 </td>
                 <td>
                   {p.active === false ? (
@@ -162,10 +173,26 @@ function ProductForm({
   onClose,
 }) {
   const enter = useEnterNav();
+  const seedGift = initial.giftOffer ||
+    (initial.offer?.type === OFFER_GIFT ? initial.offer : null) || {
+      buyQty: 0,
+      giftGroups: [],
+    };
+
   const [f, setF] = useState({
     ...initial,
     priceInput: toRMInput(initial.price),
-    offer: { ...emptyOffer(), ...(initial.offer || {}) },
+    // A product saved under the old shape had its gift inside `offer`. Move it
+    // out so the pricing dropdown is not stuck on a type that no longer exists.
+    offer:
+      initial.offer?.type === OFFER_GIFT
+        ? emptyOffer()
+        : { ...emptyOffer(), ...(initial.offer || {}) },
+    giftOn: Boolean(seedGift.buyQty > 0 && seedGift.giftGroups?.length),
+    giftOffer: {
+      buyQty: seedGift.buyQty || 0,
+      giftGroups: seedGift.giftGroups || [],
+    },
   });
   const [busy, setBusy] = useState(false);
 
@@ -196,41 +223,40 @@ function ProductForm({
   async function save() {
     if (!f.name.trim()) return;
     setBusy(true);
+    const giftGroups = (f.giftOffer.giftGroups || [])
+      .map((g) => ({
+        qty: Number(g.qty) || 0,
+        productIds: (g.productIds || []).filter(Boolean),
+      }))
+      .filter((g) => g.qty > 0 && g.productIds.length);
+
+    const giftOffer =
+      f.giftOn && Number(f.giftOffer.buyQty) > 0 && giftGroups.length
+        ? { buyQty: Number(f.giftOffer.buyQty), giftGroups }
+        : null;
+
     const offer =
-      f.offer.type === OFFER_GIFT
+      f.offer.type === OFFER_BULK
         ? {
-            type: OFFER_GIFT,
-            buyQty: Number(f.offer.buyQty) || 0,
-            freeQty: 0,
-            tiers: [],
-            giftGroups: (f.offer.giftGroups || [])
-              .map((g) => ({
-                qty: Number(g.qty) || 0,
-                productIds: (g.productIds || []).filter(Boolean),
+            type: OFFER_BULK,
+            tiers: f.offer.tiers
+              .map((t) => ({
+                qty: Number(t.qty) || 0,
+                price: toSen(t.priceInput ?? toRMInput(t.price)),
               }))
-              .filter((g) => g.qty > 0 && g.productIds.length),
+              .filter((t) => t.qty >= 2 && t.price > 0)
+              .sort((a, b) => a.qty - b.qty),
+            buyQty: 0,
+            freeQty: 0,
           }
-        : f.offer.type === OFFER_BULK
+        : f.offer.type === OFFER_FREEBIE
           ? {
-              type: OFFER_BULK,
-              tiers: f.offer.tiers
-                .map((t) => ({
-                  qty: Number(t.qty) || 0,
-                  price: toSen(t.priceInput ?? toRMInput(t.price)),
-                }))
-                .filter((t) => t.qty >= 2 && t.price > 0)
-                .sort((a, b) => a.qty - b.qty),
-              buyQty: 0,
-              freeQty: 0,
+              type: OFFER_FREEBIE,
+              buyQty: Number(f.offer.buyQty) || 0,
+              freeQty: Number(f.offer.freeQty) || 0,
+              tiers: [],
             }
-          : f.offer.type === OFFER_FREEBIE
-            ? {
-                type: OFFER_FREEBIE,
-                buyQty: Number(f.offer.buyQty) || 0,
-                freeQty: Number(f.offer.freeQty) || 0,
-                tiers: [],
-              }
-            : emptyOffer();
+          : emptyOffer();
 
     const tags = String(
       f.tagsInput ??
@@ -242,6 +268,7 @@ function ProductForm({
 
     await onSave({
       name: f.name.trim(),
+      giftOffer,
       tags,
       barcode: String(f.barcode || "").trim(),
       category: (f.category || "").trim(),
@@ -351,7 +378,6 @@ function ProductForm({
             <option value={OFFER_NONE}>No offer</option>
             <option value={OFFER_FREEBIE}>Buy X, get Y free</option>
             <option value={OFFER_BULK}>Bulk price (n for RM y)</option>
-            <option value={OFFER_GIFT}>Buy X, free Y of OTHER products</option>
           </select>
         </label>
 
@@ -376,17 +402,6 @@ function ProductForm({
               />
             </label>
           </div>
-        )}
-
-        {f.offer.type === OFFER_GIFT && (
-          <GiftEditor
-            offer={f.offer}
-            products={products}
-            selfId={initial.id}
-            onChange={(next) =>
-              setF((st) => ({ ...st, offer: { ...st.offer, ...next } }))
-            }
-          />
         )}
 
         {f.offer.type === OFFER_BULK && (
@@ -447,6 +462,43 @@ function ProductForm({
             );
           })}
         </div>
+
+        <div className="section-rule" />
+
+        <label
+          style={{
+            display: "flex",
+            gap: 9,
+            alignItems: "center",
+            marginBottom: 6,
+          }}>
+          <input
+            type="checkbox"
+            checked={f.giftOn}
+            onChange={(e) => set("giftOn", e.target.checked)}
+          />
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
+            Also give away other products
+          </span>
+        </label>
+        <p className="lede">
+          Separate from the price offer above, and they work together — a
+          product can be 3 for RM75 <em>and</em> come with two free bottles of
+          something else.
+        </p>
+
+        {f.giftOn && (
+          <GiftEditor
+            offer={f.giftOffer}
+            products={products}
+            selfId={initial.id}
+            onChange={(next) =>
+              setF((st) => ({ ...st, giftOffer: { ...st.giftOffer, ...next } }))
+            }
+          />
+        )}
+
+        <div className="section-rule" />
 
         <label
           style={{
