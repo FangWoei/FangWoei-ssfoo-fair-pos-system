@@ -160,6 +160,14 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 
+  /* Private Network Access.
+     Once the till is served from Vercel over https, a request to
+     http://localhost is a PUBLIC page reaching into a PRIVATE network, and
+     Chrome sends a preflight asking permission first. Without this header the
+     drawer silently stops working in production while still working fine on
+     the dev server — a nasty one to debug at a fair. */
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+
   if (req.method === "OPTIONS") return res.writeHead(204).end();
 
   if (req.url.startsWith("/health")) {
