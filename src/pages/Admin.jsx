@@ -191,6 +191,7 @@ function ProductForm({
     giftOn: Boolean(seedGift.buyQty > 0 && seedGift.giftGroups?.length),
     giftOffer: {
       buyQty: seedGift.buyQty || 0,
+      triggerIds: seedGift.triggerIds || [],
       giftGroups: seedGift.giftGroups || [],
     },
   });
@@ -232,7 +233,11 @@ function ProductForm({
 
     const giftOffer =
       f.giftOn && Number(f.giftOffer.buyQty) > 0 && giftGroups.length
-        ? { buyQty: Number(f.giftOffer.buyQty), giftGroups }
+        ? {
+            buyQty: Number(f.giftOffer.buyQty),
+            triggerIds: (f.giftOffer.triggerIds || []).filter(Boolean),
+            giftGroups,
+          }
         : null;
 
     const offer =
@@ -649,7 +654,7 @@ function GiftEditor({ offer, products, selfId, onChange }) {
   return (
     <>
       <label className="field">
-        <span>Customer must buy how many of THIS product?</span>
+        <span>Customer must buy how many to earn the free items?</span>
         <input
           className="mono"
           inputMode="numeric"
@@ -657,6 +662,48 @@ function GiftEditor({ offer, products, selfId, onChange }) {
           onChange={(e) => onChange({ buyQty: e.target.value })}
         />
       </label>
+
+      <p className="lede" style={{ marginTop: -8 }}>
+        Counted across this product plus anything ticked below. Leave the list
+        empty and only this product counts.
+      </p>
+
+      <details className="triggerbox" open={Boolean(offer.triggerIds?.length)}>
+        <summary>
+          Also count other products toward the {offer.buyQty || 0}
+          {offer.triggerIds?.length
+            ? ` — ${offer.triggerIds.length} ticked`
+            : ""}
+        </summary>
+        <p className="lede">
+          For "any four nappies, sizes mixed": tick the other seven sizes here.
+          Set this on ONE size only — the till counts every ticked product
+          together, so repeating it on each size would give away eight trial
+          boxes instead of one.
+        </p>
+        <div className="giftpick">
+          {products
+            .filter((p) => p.id !== selfId)
+            .map((p) => (
+              <label key={p.id} className="giftopt">
+                <input
+                  type="checkbox"
+                  checked={(offer.triggerIds || []).includes(p.id)}
+                  onChange={() => {
+                    const ids = offer.triggerIds || [];
+                    onChange({
+                      triggerIds: ids.includes(p.id)
+                        ? ids.filter((x) => x !== p.id)
+                        : [...ids, p.id],
+                    });
+                  }}
+                />
+                <span>{p.name}</span>
+                <em className="mono">{formatRM(p.price)}</em>
+              </label>
+            ))}
+        </div>
+      </details>
 
       {groups.map((g, i) => (
         <div className="giftgroup" key={i}>
@@ -671,9 +718,9 @@ function GiftEditor({ offer, products, selfId, onChange }) {
               />
             </label>
             <p className="lede" style={{ margin: 0, flex: 1 }}>
-              Tick every product the customer may choose from. Tick more than
-              one and they pick the flavour; the till still allows only{" "}
-              {g.qty || 0}.
+              Tick every product the customer may choose from. Tick all eight
+              trial sizes and they pick any one, whatever sizes they bought —
+              the till still allows only {g.qty || 0}.
             </p>
             {groups.length > 1 && (
               <button

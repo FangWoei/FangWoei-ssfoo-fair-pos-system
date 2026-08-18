@@ -629,6 +629,105 @@ check(
   },
 );
 
+/* ---------- eight nappy sizes, any four, any trial size ---------- */
+
+const SIZES = ["NB", "S", "M", "L", "XL", "XXL", "XXXL", "XXXXL"];
+const NAPPY = SIZES.map((z, i) => ({
+  id: `d${i}`,
+  name: `Diaper ${z}`,
+  price: 4500,
+}));
+const TRIAL = SIZES.map((z, i) => ({
+  id: `t${i}`,
+  name: `Trial ${z}`,
+  price: 1500,
+  giftOnly: true,
+}));
+// Configured once, on the first size, listing all eight as triggers.
+NAPPY[0].giftOffer = {
+  buyQty: 4,
+  triggerIds: NAPPY.map((d) => d.id),
+  giftGroups: [{ qty: 1, productIds: TRIAL.map((t) => t.id) }],
+};
+const NAPPYP = promotionsFromProducts([...NAPPY, ...TRIAL]);
+const asProduct = (p) => ({ ...p, productId: p.id });
+
+check("one promotion covers all eight sizes", () => {
+  assert.equal(NAPPYP.length, 1);
+  assert.equal(NAPPYP[0].require.productIds.length, 8);
+  assert.match(NAPPYP[0].gifts[0].label, /any 8 sizes/);
+});
+
+check("four DIFFERENT sizes earn a trial box", () => {
+  const cart = [
+    cartLine(NAPPY[0], 1),
+    cartLine(NAPPY[3], 1),
+    cartLine(NAPPY[5], 1),
+    cartLine(NAPPY[7], 1),
+  ];
+  assert.equal(checkCanAdd(asProduct(TRIAL[2]), cart, NAPPYP).ok, true);
+});
+
+check("the trial size need not match anything bought", () => {
+  const cart = [cartLine(NAPPY[1], 4)]; // four size S
+  // customer takes an XXXXL trial
+  assert.equal(checkCanAdd(asProduct(TRIAL[7]), cart, NAPPYP).ok, true);
+});
+
+check("three nappies is not enough, whatever the mix", () => {
+  const cart = [
+    cartLine(NAPPY[0], 1),
+    cartLine(NAPPY[2], 1),
+    cartLine(NAPPY[6], 1),
+  ];
+  const r = checkCanAdd(asProduct(TRIAL[0]), cart, NAPPYP);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /1 more/);
+});
+
+check("the trial box is free, the nappies are charged", () => {
+  const lines = [
+    cartLine(NAPPY[0], 2),
+    cartLine(NAPPY[4], 2),
+    cartLine(TRIAL[3], 1),
+  ];
+  const r = applyPromotions(lines, NAPPYP);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+  assert.equal(total(lines, r), 4 * 4500);
+});
+
+check("eight nappies earn two trial boxes, a third is refused", () => {
+  const cart8 = [cartLine(NAPPY[0], 8), cartLine(TRIAL[1], 1)];
+  assert.equal(checkCanAdd(asProduct(TRIAL[5]), cart8, NAPPYP).ok, true);
+  const cart8b = [
+    cartLine(NAPPY[0], 8),
+    cartLine(TRIAL[1], 1),
+    cartLine(TRIAL[5], 1),
+  ];
+  assert.equal(checkCanAdd(asProduct(TRIAL[2]), cart8b, NAPPYP).ok, false);
+});
+
+check("the two free boxes may be different sizes", () => {
+  const lines = [
+    cartLine(NAPPY[2], 8),
+    cartLine(TRIAL[0], 1),
+    cartLine(TRIAL[6], 1),
+  ];
+  const r = applyPromotions(lines, NAPPYP);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+  assert.equal(total(lines, r), 8 * 4500);
+});
+
+check("setting the same group on every size still gives ONE promotion", () => {
+  const all = NAPPY.map((d) => ({ ...d, giftOffer: NAPPY[0].giftOffer }));
+  const promos = promotionsFromProducts([...all, ...TRIAL]);
+  assert.equal(
+    promos.length,
+    1,
+    "duplicates must collapse, or four nappies give eight boxes",
+  );
+});
+
 let failed = 0;
 for (const [name, fn] of cases) {
   try {

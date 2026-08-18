@@ -113,31 +113,55 @@ import { priceCart } from "./pricing.js";
  */
 export function promotionsFromProducts(products = []) {
   const byId = new Map(products.map((p) => [p.id, p]));
+  const seen = new Set();
+  const out = [];
 
-  return products
-    .map((p) => ({ product: p, gift: giftConfigOf(p) }))
-    .filter(({ gift }) => gift)
-    .map(({ product: p, gift }) => ({
-      id: `product-gift-${p.id}`,
-      name: `${p.name} — buy ${gift.buyQty}`,
+  const nameFor = (ids, fallback) => {
+    if (ids.length === 1) return byId.get(ids[0])?.name || fallback;
+    const names = ids.map((id) => byId.get(id)?.name).filter(Boolean);
+    return names.length <= 2 ? names.join(" / ") : `any ${names.length} sizes`;
+  };
+
+  for (const p of products) {
+    const gift = giftConfigOf(p);
+    if (!gift) continue;
+
+    /* The buy side may span several products: four nappies in ANY mix of
+       eight sizes. Leave the trigger list empty and it is just this product. */
+    const triggerIds = gift.triggerIds?.length
+      ? [...new Set([p.id, ...gift.triggerIds])].sort()
+      : [p.id];
+
+    /* Set the same group promotion on more than one of its members — easy to
+       do when there are eight sizes — and it would otherwise be counted once
+       per member, giving away eight trial boxes instead of one. Identical
+       rules collapse into one. */
+    const signature = JSON.stringify([
+      triggerIds,
+      gift.buyQty,
+      gift.giftGroups.map((g) => [g.qty, [...g.productIds].sort()]),
+    ]);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+
+    out.push({
+      id: `product-gift-${triggerIds.join("-")}`,
+      name: `${nameFor(triggerIds, p.name)} — buy ${gift.buyQty}`,
       short: `Buy ${gift.buyQty} free ${gift.giftGroups.reduce(
         (s, g) => s + Number(g.qty || 0),
         0,
       )}`,
       type: "bundle-gift",
-      require: { productIds: [p.id], qty: Number(gift.buyQty) },
+      require: { productIds: triggerIds, qty: Number(gift.buyQty) },
       gifts: gift.giftGroups.map((g) => ({
         productIds: g.productIds,
         qty: Number(g.qty),
-        label:
-          g.productIds.length === 1
-            ? byId.get(g.productIds[0])?.name || "free item"
-            : `any ${g.productIds
-                .map((id) => byId.get(id)?.name)
-                .filter(Boolean)
-                .join(" / ")}`,
+        label: nameFor(g.productIds, "free item"),
       })),
-    }));
+    });
+  }
+
+  return out;
 }
 
 /**
@@ -159,6 +183,7 @@ export function giftConfigOf(product) {
   if (!raw) return null;
 
   const buyQty = Number(raw.buyQty) || 0;
+  const triggerIds = (raw.triggerIds || []).filter(Boolean);
   const giftGroups = (raw.giftGroups || [])
     .map((g) => ({
       qty: Number(g.qty) || 0,
@@ -167,7 +192,7 @@ export function giftConfigOf(product) {
     .filter((g) => g.qty > 0 && g.productIds.length);
 
   if (buyQty <= 0 || !giftGroups.length) return null;
-  return { buyQty, giftGroups };
+  return { buyQty, giftGroups, triggerIds };
 }
 
 /* ────────────────────────────── the engine ────────────────────────────── */

@@ -1049,6 +1049,26 @@ textarea {
   color: var(--green);
 }
 
+.triggerbox {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+  margin-bottom: 14px;
+  background: var(--sunk);
+}
+.triggerbox summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.triggerbox summary:hover {
+  color: var(--ink);
+}
+.triggerbox .lede {
+  margin: 10px 0;
+}
+
 .giftgroup {
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -1370,4 +1390,3 @@ textarea {
     gap: 10px;
   }
 }
-  
