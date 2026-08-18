@@ -1,26 +1,30 @@
-import { useState } from 'react';
-import { signIn } from '../lib/auth';
+import { useState } from "react";
+import { signIn } from "../lib/auth";
+import { useEnterNav } from "../lib/useEnterNav";
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const enter = useEnterNav();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
-    setError('');
+    setError("");
     const r = await signIn(email, password);
     if (!r.ok) setError(r.message);
     setBusy(false);
   }
 
   return (
-    <div className="scrim" style={{ background: 'var(--canvas)' }}>
-      <form className="modal" onSubmit={submit}>
+    <div className="scrim" style={{ background: "var(--canvas)" }}>
+      <form className="modal" onSubmit={submit} {...enter}>
         <div className="brand" style={{ marginBottom: 18 }}>
-          <span className="brand-mark" style={{ fontSize: 28 }}>SS FOO</span>
+          <span className="brand-mark" style={{ fontSize: 28 }}>
+            SS FOO
+          </span>
           <span className="brand-sub">Fair</span>
         </div>
         <h3>Sign in to the till</h3>
@@ -52,12 +56,11 @@ export default function Login() {
         {error && (
           <p
             style={{
-              color: 'var(--amber)',
+              color: "var(--amber)",
               fontSize: 13,
               lineHeight: 1.45,
-              margin: '0 0 14px',
-            }}
-          >
+              margin: "0 0 14px",
+            }}>
             {error}
           </p>
         )}
@@ -66,13 +69,12 @@ export default function Login() {
           <button
             className="btn primary"
             type="submit"
-            disabled={busy || !email || !password}
-          >
-            {busy ? 'Signing in…' : 'Sign in'}
+            disabled={busy || !email || !password}>
+            {busy ? "Signing in…" : "Sign in"}
           </button>
         </div>
 
-        <p className="lede" style={{ margin: '16px 0 0', fontSize: 12 }}>
+        <p className="lede" style={{ margin: "16px 0 0", fontSize: 12 }}>
           Forgotten a password? An admin resets it in the Firebase console under
           Authentication.
         </p>

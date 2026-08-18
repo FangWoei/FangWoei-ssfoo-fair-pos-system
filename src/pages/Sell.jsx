@@ -1,40 +1,48 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { priceCart, priceLine, formatRM, toSen, OFFER_NONE } from '../lib/pricing';
-import { recordSale, METHODS } from '../lib/db';
-import { openDrawer } from '../lib/drawer';
-import Receipt from '../components/Receipt';
-import { categoryColor } from '../lib/colors';
-import { useToast } from '../App';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useToast } from "../App";
+import Receipt from "../components/Receipt";
+import { categoryColor } from "../lib/colors";
+import { METHODS, recordSale } from "../lib/db";
+import { openDrawer } from "../lib/drawer";
+import { formatRM, OFFER_NONE, priceLine, toSen } from "../lib/pricing";
+import { priceCartWithPromotions } from "../lib/promotions";
+import { useEnterNav } from "../lib/useEnterNav";
 
 export default function Sell({ products, till, me }) {
   const notify = useToast();
   const [lines, setLines] = useState([]);
-  const [term, setTerm] = useState('');
-  const [cat, setCat] = useState('All');
+  const [term, setTerm] = useState("");
+  const [cat, setCat] = useState("All");
   const [paying, setPaying] = useState(null); // 'cash' | 'qr' | 'card'
   const [editing, setEditing] = useState(null); // line key being discounted
   const [printJob, setPrintJob] = useState(null);
   const scanRef = useRef(null);
 
-  const active = useMemo(() => products.filter((p) => p.active !== false), [products]);
+  const active = useMemo(
+    () => products.filter((p) => p.active !== false),
+    [products],
+  );
   const cats = useMemo(
-    () => ['All', ...new Set(active.map((p) => p.category).filter(Boolean))],
-    [active]
+    () => ["All", ...new Set(active.map((p) => p.category).filter(Boolean))],
+    [active],
   );
 
   const shown = useMemo(() => {
     const t = term.trim().toLowerCase();
     return active.filter((p) => {
-      if (cat !== 'All' && p.category !== cat) return false;
+      if (cat !== "All" && p.category !== cat) return false;
       if (!t) return true;
       return (
         p.name.toLowerCase().includes(t) ||
-        String(p.barcode || '').toLowerCase().includes(t)
+        String(p.barcode || "")
+          .toLowerCase()
+          .includes(t)
       );
     });
   }, [active, cat, term]);
 
-  const cart = priceCart(lines);
+  const cart = priceCartWithPromotions(lines);
+  const blocked = cart.blockers.length > 0;
 
   /* Keep the scanner input focused whenever nothing else is. A barcode gun is
      just a fast keyboard, so this is all the "scanner support" it needs. */
@@ -47,7 +55,9 @@ export default function Sell({ products, till, me }) {
 
   function add(product, by = 1) {
     setLines((prev) => {
-      const i = prev.findIndex((l) => l.productId === product.id && !l.discount);
+      const i = prev.findIndex(
+        (l) => l.productId === product.id && !l.discount,
+      );
       if (i >= 0) {
         const next = [...prev];
         next[i] = { ...next[i], qty: next[i].qty + by };
@@ -60,18 +70,21 @@ export default function Sell({ products, till, me }) {
           productId: product.id,
           name: product.name,
           unitPrice: product.price,
+          tags: product.tags || [],
           offer: product.offer || { type: OFFER_NONE },
           qty: by,
           discount: null,
         },
       ];
     });
-    setTerm('');
+    setTerm("");
   }
 
   const setQty = (key, qty) =>
     setLines((p) =>
-      qty <= 0 ? p.filter((l) => l.key !== key) : p.map((l) => (l.key === key ? { ...l, qty } : l))
+      qty <= 0
+        ? p.filter((l) => l.key !== key)
+        : p.map((l) => (l.key === key ? { ...l, qty } : l)),
     );
 
   const removeLine = (key) => setLines((p) => p.filter((l) => l.key !== key));
@@ -84,11 +97,11 @@ export default function Sell({ products, till, me }) {
     const t = term.trim();
     if (!t) return;
     const exact = active.find(
-      (p) => String(p.barcode || '').toLowerCase() === t.toLowerCase()
+      (p) => String(p.barcode || "").toLowerCase() === t.toLowerCase(),
     );
     if (exact) return add(exact);
     if (shown.length === 1) return add(shown[0]);
-    if (shown.length === 0) notify(`Nothing matches "${t}"`, 'warn');
+    if (shown.length === 0) notify(`Nothing matches "${t}"`, "warn");
   }
 
   /* ---------- finish a sale ---------- */
@@ -102,7 +115,7 @@ export default function Sell({ products, till, me }) {
         qty: l.qty,
         total: l.priced.total,
         saved: l.priced.saved,
-        note: l.priced.rule === 'unit' ? '' : l.priced.note,
+        note: l.priced.rule === "unit" ? "" : l.priced.note,
       })),
       qty: cart.qty,
       gross: cart.gross,
@@ -111,7 +124,7 @@ export default function Sell({ products, till, me }) {
       method,
       cashGiven: extra.cashGiven ?? 0,
       change: extra.change ?? 0,
-      ref: extra.ref || '',
+      ref: extra.ref || "",
     };
 
     setPaying(null);
@@ -122,15 +135,17 @@ export default function Sell({ products, till, me }) {
       ...sale,
       receiptNo: saved.receiptNo,
       till: till.id,
-      cashierName: me?.name || '',
+      cashierName: me?.name || "",
       at: Date.now(),
     });
-    notify(`${saved.receiptNo} · ${formatRM(sale.total)} ${METHODS[method].label}`);
+    notify(
+      `${saved.receiptNo} · ${formatRM(sale.total)} ${METHODS[method].label}`,
+    );
 
     // Drawer is fire-and-forget and cash-only. The sale is already done.
-    if (method === 'cash' && till.hasDrawer) {
+    if (method === "cash" && till.hasDrawer) {
       openDrawer().then((r) => {
-        if (!r.ok) notify(r.message, 'warn');
+        if (!r.ok) notify(r.message, "warn");
       });
     }
   }
@@ -164,8 +179,11 @@ export default function Sell({ products, till, me }) {
               autoComplete="off"
             />
             {term && (
-              <button type="button" className="linkbtn" onClick={() => setTerm('')}
-                style={{ color: 'var(--text-dim)' }}>
+              <button
+                type="button"
+                className="linkbtn"
+                onClick={() => setTerm("")}
+                style={{ color: "var(--text-dim)" }}>
                 clear
               </button>
             )}
@@ -178,9 +196,14 @@ export default function Sell({ products, till, me }) {
                   key={c}
                   className="cat"
                   aria-pressed={cat === c}
-                  style={{ '--chip': c === 'All' ? 'var(--marigold)' : categoryColor(c) }}
-                  onClick={() => { setCat(c); refocus(); }}
-                >
+                  style={{
+                    "--chip":
+                      c === "All" ? "var(--marigold)" : categoryColor(c),
+                  }}
+                  onClick={() => {
+                    setCat(c);
+                    refocus();
+                  }}>
                   {c}
                 </button>
               ))}
@@ -192,9 +215,8 @@ export default function Sell({ products, till, me }) {
               <button
                 key={p.id}
                 className="tile"
-                style={{ '--chip': categoryColor(p.category) }}
-                onClick={() => add(p)}
-              >
+                style={{ "--chip": categoryColor(p.category) }}
+                onClick={() => add(p)}>
                 {p.offer?.type && p.offer.type !== OFFER_NONE && (
                   <span className="tile-offer">{offerBadge(p.offer)}</span>
                 )}
@@ -203,7 +225,7 @@ export default function Sell({ products, till, me }) {
               </button>
             ))}
             {shown.length === 0 && (
-              <p style={{ color: 'var(--text-dim)', gridColumn: '1/-1' }}>
+              <p style={{ color: "var(--text-dim)", gridColumn: "1/-1" }}>
                 No products here. Add them under Products.
               </p>
             )}
@@ -215,7 +237,7 @@ export default function Sell({ products, till, me }) {
             <div className="tape-head">
               <h2>Current sale</h2>
               <div className="sub">
-                {cart.qty} {cart.qty === 1 ? 'item' : 'items'} · {till.name}
+                {cart.qty} {cart.qty === 1 ? "item" : "items"} · {till.name}
               </div>
             </div>
 
@@ -239,6 +261,15 @@ export default function Sell({ products, till, me }) {
             </div>
 
             <div className="totals mono">
+              {cart.applied.map((a) => (
+                <div className="trow promo" key={a.id}>
+                  <span>
+                    {a.name}
+                    {a.times > 1 ? ` ×${a.times}` : ""}
+                  </span>
+                  <span>{a.saving > 0 ? `-${formatRM(a.saving)}` : ""}</span>
+                </div>
+              ))}
               <div className="trow">
                 <span>Subtotal</span>
                 <span>{formatRM(cart.gross)}</span>
@@ -256,13 +287,20 @@ export default function Sell({ products, till, me }) {
             </div>
 
             <div className="pay">
+              {blocked && (
+                <div className="blockers">
+                  <strong>Promotion not complete</strong>
+                  {cart.blockers.map((b, i) => (
+                    <span key={i}>{b.message}</span>
+                  ))}
+                </div>
+              )}
               {till.methods.map((m) => (
                 <button
                   key={m}
                   className={`paybtn ${m}`}
-                  disabled={cart.lines.length === 0}
-                  onClick={() => setPaying(m)}
-                >
+                  disabled={cart.lines.length === 0 || blocked}
+                  onClick={() => setPaying(m)}>
                   <span>{METHODS[m].label}</span>
                   <small className="mono">{formatRM(cart.total)}</small>
                 </button>
@@ -277,34 +315,41 @@ export default function Sell({ products, till, me }) {
         </div>
       </div>
 
-      {paying === 'cash' && (
-        <CashModal due={cart.total} onCancel={() => setPaying(null)} onDone={finish} />
+      {paying === "cash" && (
+        <CashModal
+          due={cart.total}
+          onCancel={() => setPaying(null)}
+          onDone={finish}
+        />
       )}
-      {paying === 'qr' && (
+      {paying === "qr" && (
         <ConfirmModal
           title="Touch 'n Go"
           due={cart.total}
           note="Show the QR, wait for the customer's paid screen, then confirm."
           showQR
           onCancel={() => setPaying(null)}
-          onDone={(ref) => finish('qr', { ref })}
+          onDone={(ref) => finish("qr", { ref })}
         />
       )}
-      {paying === 'card' && (
+      {paying === "card" && (
         <ConfirmModal
           title="Card"
           due={cart.total}
           note="Key the amount into the terminal. Confirm once it approves."
           refLabel="Approval code (optional)"
           onCancel={() => setPaying(null)}
-          onDone={(ref) => finish('card', { ref })}
+          onDone={(ref) => finish("card", { ref })}
         />
       )}
       {editLine && (
         <DiscountModal
           line={editLine}
           onCancel={() => setEditing(null)}
-          onSave={(d) => { setDiscount(editLine.key, d); setEditing(null); }}
+          onSave={(d) => {
+            setDiscount(editLine.key, d);
+            setEditing(null);
+          }}
         />
       )}
 
@@ -314,36 +359,42 @@ export default function Sell({ products, till, me }) {
 }
 
 function offerBadge(offer) {
-  if (offer.type === 'freebie') return `${offer.buyQty}+${offer.freeQty}`;
-  if (offer.type === 'bulk' && offer.tiers?.length) {
+  if (offer.type === "freebie") return `${offer.buyQty}+${offer.freeQty}`;
+  if (offer.type === "bulk" && offer.tiers?.length) {
     const t = offer.tiers[offer.tiers.length - 1];
-    return `${t.qty}/${formatRM(t.price).replace('RM', '').replace('.00', '')}`;
+    return `${t.qty}/${formatRM(t.price).replace("RM", "").replace(".00", "")}`;
   }
-  return 'Offer';
+  return "Offer";
 }
 
 function CartLine({ line, onQty, onRemove, onDiscount }) {
   const p = line.priced;
   const discounted = p.total !== p.gross;
   return (
-    <div className={line.discount ? 'line sel' : 'line'}>
+    <div className={line.discount ? "line sel" : "line"}>
       <div className="line-top">
         <span className="line-name">{line.name}</span>
         <span className="mono">
-          {discounted && <span className="line-amt struck">{formatRM(p.gross)}</span>}
+          {discounted && (
+            <span className="line-amt struck">{formatRM(p.gross)}</span>
+          )}
           <span className="line-amt">{formatRM(p.total)}</span>
         </span>
       </div>
       <div className="line-sub mono">
         <span className="qty">
-          <button onClick={() => onQty(line.qty - 1)} aria-label="One less">−</button>
+          <button onClick={() => onQty(line.qty - 1)} aria-label="One less">
+            −
+          </button>
           <span>{line.qty}</span>
-          <button onClick={() => onQty(line.qty + 1)} aria-label="One more">+</button>
+          <button onClick={() => onQty(line.qty + 1)} aria-label="One more">
+            +
+          </button>
         </span>
         <span>@ {formatRM(line.unitPrice)}</span>
         <span className="spacer" style={{ flex: 1 }} />
         <button className="linkbtn" onClick={onDiscount}>
-          {line.discount ? 'Discount' : 'Discount'}
+          {line.discount ? "Discount" : "Discount"}
         </button>
         <button className="linkbtn danger" onClick={onRemove}>
           Remove
@@ -352,20 +403,20 @@ function CartLine({ line, onQty, onRemove, onDiscount }) {
       {p.note && (
         <div
           className={
-            p.rule === 'discount'
-              ? 'line-sub line-note cut'
-              : p.rule === 'unit'
-              ? 'line-sub line-note warn'
-              : 'line-sub line-note'
-          }
-        >
+            p.rule === "discount"
+              ? "line-sub line-note cut"
+              : p.rule === "unit"
+                ? "line-sub line-note warn"
+                : "line-sub line-note"
+          }>
           {p.note}
-          {p.rule !== 'unit' && p.saved > 0 && ` · saved ${formatRM(p.saved)}`}
+          {p.rule !== "unit" && p.saved > 0 && ` · saved ${formatRM(p.saved)}`}
         </div>
       )}
       {p.upsell && (
         <div className="line-sub line-note warn">
-          {p.upsell.extra} more makes it {formatRM(p.upsell.total)} — {formatRM(p.upsell.saves)} cheaper
+          {p.upsell.extra} more makes it {formatRM(p.upsell.total)} —{" "}
+          {formatRM(p.upsell.saves)} cheaper
         </div>
       )}
     </div>
@@ -377,7 +428,8 @@ function CartLine({ line, onQty, onRemove, onDiscount }) {
 const NOTES = [100, 500, 1000, 2000, 5000, 10000];
 
 function CashModal({ due, onCancel, onDone }) {
-  const [given, setGiven] = useState('');
+  const enter = useEnterNav();
+  const [given, setGiven] = useState("");
   const sen = toSen(given);
   const change = sen - due;
   const enough = sen >= due;
@@ -385,7 +437,7 @@ function CashModal({ due, onCancel, onDone }) {
   const bump = (amt) => setGiven((g) => ((toSen(g) + amt) / 100).toFixed(2));
 
   return (
-    <Scrim onCancel={onCancel}>
+    <Scrim onCancel={onCancel} nav={enter}>
       <h3>Cash</h3>
       <div className="due mono">
         <small>Amount due</small>
@@ -393,15 +445,17 @@ function CashModal({ due, onCancel, onDone }) {
       </div>
 
       <div className="notes mono">
-        <button className="note exact" onClick={() => setGiven((due / 100).toFixed(2))}>
+        <button
+          className="note exact"
+          onClick={() => setGiven((due / 100).toFixed(2))}>
           Exact
         </button>
-        <button className="note" onClick={() => setGiven('')}>
+        <button className="note" onClick={() => setGiven("")}>
           Reset
         </button>
         {NOTES.map((n) => (
           <button key={n} className="note" onClick={() => bump(n)}>
-            +{formatRM(n).replace('.00', '')}
+            +{formatRM(n).replace(".00", "")}
           </button>
         ))}
       </div>
@@ -420,7 +474,7 @@ function CashModal({ due, onCancel, onDone }) {
 
       <div className="change mono">
         <span>Change</span>
-        <b className={enough ? 'figure' : 'figure short'}>
+        <b className={enough ? "figure" : "figure short"}>
           {enough ? formatRM(change) : `Short ${formatRM(-change)}`}
         </b>
       </div>
@@ -432,8 +486,7 @@ function CashModal({ due, onCancel, onDone }) {
         <button
           className="btn primary"
           disabled={!enough}
-          onClick={() => onDone('cash', { cashGiven: sen, change })}
-        >
+          onClick={() => onDone("cash", { cashGiven: sen, change })}>
           Take payment
         </button>
       </div>
@@ -441,10 +494,19 @@ function CashModal({ due, onCancel, onDone }) {
   );
 }
 
-function ConfirmModal({ title, due, note, showQR, refLabel, onCancel, onDone }) {
-  const [ref, setRef] = useState('');
+function ConfirmModal({
+  title,
+  due,
+  note,
+  showQR,
+  refLabel,
+  onCancel,
+  onDone,
+}) {
+  const enter = useEnterNav();
+  const [ref, setRef] = useState("");
   return (
-    <Scrim onCancel={onCancel}>
+    <Scrim onCancel={onCancel} nav={enter}>
       <h3>{title}</h3>
       <p className="lede">{note}</p>
       <div className="due mono">
@@ -458,8 +520,12 @@ function ConfirmModal({ title, due, note, showQR, refLabel, onCancel, onDone }) 
         </div>
       )}
       <label className="field">
-        <span>{refLabel || 'Reference (optional)'}</span>
-        <input className="mono" value={ref} onChange={(e) => setRef(e.target.value)} />
+        <span>{refLabel || "Reference (optional)"}</span>
+        <input
+          className="mono"
+          value={ref}
+          onChange={(e) => setRef(e.target.value)}
+        />
       </label>
       <div className="actions">
         <button className="btn" onClick={onCancel}>
@@ -474,19 +540,24 @@ function ConfirmModal({ title, due, note, showQR, refLabel, onCancel, onDone }) 
 }
 
 function DiscountModal({ line, onCancel, onSave }) {
-  const [type, setType] = useState(line.discount?.type || 'percent');
+  const enter = useEnterNav();
+  const [type, setType] = useState(line.discount?.type || "percent");
   const [value, setValue] = useState(
-    line.discount ? (line.discount.type === 'percent' ? String(line.discount.value) : (line.discount.value / 100).toFixed(2)) : ''
+    line.discount
+      ? line.discount.type === "percent"
+        ? String(line.discount.value)
+        : (line.discount.value / 100).toFixed(2)
+      : "",
   );
 
   const discount = value
-    ? { type, value: type === 'percent' ? Number(value) : toSen(value) }
+    ? { type, value: type === "percent" ? Number(value) : toSen(value) }
     : null;
   const preview = priceLine({ ...line, discount });
   const withOffer = priceLine({ ...line, discount: null });
 
   return (
-    <Scrim onCancel={onCancel}>
+    <Scrim onCancel={onCancel} nav={enter}>
       <h3>Discount — {line.name}</h3>
       <p className="lede">
         A manual discount replaces this product's offer. The two never stack.
@@ -500,7 +571,7 @@ function DiscountModal({ line, onCancel, onSave }) {
           </select>
         </label>
         <label className="field">
-          <span>{type === 'percent' ? 'Percent' : 'Amount (RM)'}</span>
+          <span>{type === "percent" ? "Percent" : "Amount (RM)"}</span>
           <input
             className="mono"
             inputMode="decimal"
@@ -513,7 +584,9 @@ function DiscountModal({ line, onCancel, onSave }) {
 
       <div className="preview mono">
         <div className="prow">
-          <span>{line.qty} × {formatRM(line.unitPrice)}</span>
+          <span>
+            {line.qty} × {formatRM(line.unitPrice)}
+          </span>
           <span>{formatRM(preview.gross)}</span>
         </div>
         {withOffer.saved > 0 && (
@@ -545,15 +618,19 @@ function DiscountModal({ line, onCancel, onSave }) {
   );
 }
 
-function Scrim({ children, onCancel }) {
+function Scrim({ children, onCancel, nav }) {
   useEffect(() => {
-    const esc = (e) => e.key === 'Escape' && onCancel();
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
+    const esc = (e) => e.key === "Escape" && onCancel();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
   }, [onCancel]);
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="modal">{children}</div>
+    <div
+      className="scrim"
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="modal" {...(nav || {})}>
+        {children}
+      </div>
     </div>
   );
 }

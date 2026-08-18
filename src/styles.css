@@ -556,6 +556,29 @@ textarea {
   color: var(--green);
   font-weight: 600;
 }
+.trow.promo {
+  color: var(--rose);
+  font-weight: 600;
+}
+
+/* Payment is off while a promotion is half-scanned. Say what is missing
+   rather than just greying the buttons out. */
+.blockers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 13px;
+  border-radius: var(--r-sm);
+  background: var(--rose-wash);
+  border: 1px solid #fbd3e1;
+  color: var(--rose-deep);
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+.blockers strong {
+  font-size: 13px;
+}
 .grand {
   display: flex;
   justify-content: space-between;

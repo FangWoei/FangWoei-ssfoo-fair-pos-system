@@ -1,23 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
+import { useToast } from "../App";
 import {
-  ROLES,
-  watchUsers,
   createAccount,
+  renameUser,
+  ROLES,
   setUserActive,
   setUserRole,
-  renameUser,
-} from '../lib/auth';
-import { useToast } from '../App';
+  watchUsers,
+} from "../lib/auth";
+import { useEnterNav } from "../lib/useEnterNav";
 
 export default function Users({ me }) {
   const notify = useToast();
   const [users, setUsers] = useState([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
 
   useEffect(() => watchUsers(setUsers, setError), []);
 
-  const admins = users.filter((u) => u.role === 'admin' && u.active !== false);
+  const admins = users.filter((u) => u.role === "admin" && u.active !== false);
 
   return (
     <div className="page">
@@ -27,15 +28,16 @@ export default function Users({ me }) {
         <div className="spacer" />
         <button
           className="btn primary"
-          style={{ flex: '0 0 auto', padding: '0 20px' }}
-          onClick={() => setAdding(true)}
-        >
+          style={{ flex: "0 0 auto", padding: "0 20px" }}
+          onClick={() => setAdding(true)}>
           Create account
         </button>
       </div>
 
       {error && (
-        <p style={{ color: 'var(--amber)', fontSize: 13, marginBottom: 16 }}>{error}</p>
+        <p style={{ color: "var(--amber)", fontSize: 13, marginBottom: 16 }}>
+          {error}
+        </p>
       )}
 
       <table className="table">
@@ -51,7 +53,7 @@ export default function Users({ me }) {
         <tbody>
           {users.map((u) => {
             const isMe = u.uid === me.uid;
-            const lastAdmin = u.role === 'admin' && admins.length === 1;
+            const lastAdmin = u.role === "admin" && admins.length === 1;
             return (
               <tr key={u.uid}>
                 <td>
@@ -62,7 +64,7 @@ export default function Users({ me }) {
                     </span>
                   )}
                 </td>
-                <td style={{ color: 'var(--text-dim)' }}>{u.email}</td>
+                <td style={{ color: "var(--text-dim)" }}>{u.email}</td>
                 <td>
                   <select
                     value={u.role}
@@ -72,13 +74,12 @@ export default function Users({ me }) {
                       notify(`${u.name} is now ${ROLES[e.target.value].label}`);
                     }}
                     style={{
-                      background: 'var(--canvas)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--text)',
+                      background: "var(--canvas)",
+                      border: "1px solid var(--line)",
+                      color: "var(--text)",
                       borderRadius: 7,
-                      padding: '5px 8px',
-                    }}
-                  >
+                      padding: "5px 8px",
+                    }}>
                     <option value="user">Cashier</option>
                     <option value="admin">Admin</option>
                   </select>
@@ -90,22 +91,23 @@ export default function Users({ me }) {
                     <span className="tag">Active</span>
                   )}
                 </td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   <button
                     className="linkbtn"
-                    style={{ color: 'var(--text-dim)', marginRight: 12 }}
+                    style={{ color: "var(--text-dim)", marginRight: 12 }}
                     onClick={async () => {
-                      const name = prompt('Name', u.name);
+                      const name = prompt("Name", u.name);
                       if (name?.trim()) {
                         await renameUser(u.uid, name);
-                        notify('Name updated');
+                        notify("Name updated");
                       }
-                    }}
-                  >
+                    }}>
                     Rename
                   </button>
                   <button
-                    className={u.active === false ? 'linkbtn' : 'linkbtn danger'}
+                    className={
+                      u.active === false ? "linkbtn" : "linkbtn danger"
+                    }
                     disabled={isMe || lastAdmin}
                     style={{ opacity: isMe || lastAdmin ? 0.35 : 1 }}
                     onClick={async () => {
@@ -113,11 +115,10 @@ export default function Users({ me }) {
                       notify(
                         u.active === false
                           ? `${u.name} can sign in again`
-                          : `${u.name} is blocked`
+                          : `${u.name} is blocked`,
                       );
-                    }}
-                  >
-                    {u.active === false ? 'Unblock' : 'Block'}
+                    }}>
+                    {u.active === false ? "Unblock" : "Block"}
                   </button>
                 </td>
               </tr>
@@ -125,7 +126,7 @@ export default function Users({ me }) {
           })}
           {users.length === 0 && (
             <tr>
-              <td colSpan={5} style={{ color: 'var(--text-dim)' }}>
+              <td colSpan={5} style={{ color: "var(--text-dim)" }}>
                 No accounts yet.
               </td>
             </tr>
@@ -135,13 +136,12 @@ export default function Users({ me }) {
 
       <p
         style={{
-          color: 'var(--text-dim)',
+          color: "var(--text-dim)",
           fontSize: 13,
           lineHeight: 1.55,
           marginTop: 18,
           maxWidth: 640,
-        }}
-      >
+        }}>
         Blocking stops someone using the till straight away, on both laptops,
         even if they're mid-shift. It doesn't delete their login — for that, and
         for password resets, use the Firebase console under Authentication.
@@ -161,14 +161,20 @@ export default function Users({ me }) {
 }
 
 function NewAccount({ onClose, onDone }) {
-  const [f, setF] = useState({ name: '', email: '', password: '', role: 'user' });
-  const [error, setError] = useState('');
+  const enter = useEnterNav();
+  const [f, setF] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "user",
+  });
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
   async function submit() {
     setBusy(true);
-    setError('');
+    setError("");
     const r = await createAccount(f);
     setBusy(false);
     if (r.ok) onDone(`${f.name} can now sign in`);
@@ -177,13 +183,16 @@ function NewAccount({ onClose, onDone }) {
 
   const suggest = () =>
     set(
-      'password',
-      Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6)
+      "password",
+      Math.random().toString(36).slice(2, 6) +
+        Math.random().toString(36).slice(2, 6),
     );
 
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+    <div
+      className="scrim"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" {...enter}>
         <h3>Create account</h3>
         <p className="lede">
           You'll stay signed in as yourself. Write the password down and hand it
@@ -192,7 +201,11 @@ function NewAccount({ onClose, onDone }) {
 
         <label className="field">
           <span>Name shown on the till</span>
-          <input value={f.name} autoFocus onChange={(e) => set('name', e.target.value)} />
+          <input
+            value={f.name}
+            autoFocus
+            onChange={(e) => set("name", e.target.value)}
+          />
         </label>
 
         <label className="field">
@@ -201,7 +214,7 @@ function NewAccount({ onClose, onDone }) {
             type="email"
             value={f.email}
             placeholder="ali@ssfoo.fair"
-            onChange={(e) => set('email', e.target.value)}
+            onChange={(e) => set("email", e.target.value)}
           />
         </label>
 
@@ -210,20 +223,23 @@ function NewAccount({ onClose, onDone }) {
           <input
             className="mono"
             value={f.password}
-            onChange={(e) => set('password', e.target.value)}
+            onChange={(e) => set("password", e.target.value)}
           />
         </label>
         <button
           className="linkbtn"
           onClick={suggest}
-          style={{ color: 'var(--text-dim)', marginBottom: 14, display: 'block' }}
-        >
+          style={{
+            color: "var(--text-dim)",
+            marginBottom: 14,
+            display: "block",
+          }}>
           Suggest one
         </button>
 
         <label className="field">
           <span>Role</span>
-          <select value={f.role} onChange={(e) => set('role', e.target.value)}>
+          <select value={f.role} onChange={(e) => set("role", e.target.value)}>
             <option value="user">Cashier</option>
             <option value="admin">Admin</option>
           </select>
@@ -233,7 +249,9 @@ function NewAccount({ onClose, onDone }) {
         </p>
 
         {error && (
-          <p style={{ color: 'var(--amber)', fontSize: 13, lineHeight: 1.45 }}>{error}</p>
+          <p style={{ color: "var(--amber)", fontSize: 13, lineHeight: 1.45 }}>
+            {error}
+          </p>
         )}
 
         <div className="actions">
@@ -241,7 +259,7 @@ function NewAccount({ onClose, onDone }) {
             Cancel
           </button>
           <button className="btn primary" disabled={busy} onClick={submit}>
-            {busy ? 'Creating…' : 'Create account'}
+            {busy ? "Creating…" : "Create account"}
           </button>
         </div>
       </div>
