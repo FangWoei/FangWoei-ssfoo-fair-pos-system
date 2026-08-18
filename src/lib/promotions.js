@@ -84,6 +84,17 @@ export const PROMOTIONS = [
   },
 
   {
+    id: "diaper-4-160",
+    name: "Diapers — any 4 for RM160",
+    short: "4 for RM160",
+    type: "bundle-fixed",
+
+    // Sizes mix freely: 3 NB + 1 S is a deal, so is 4 XXL.
+    require: { tag: "diaper", qty: 4 },
+    price: 16000,
+  },
+
+  {
     id: "diaper-trial",
     name: "Diapers — 4 packs, free trial box",
     short: "4 packs + free trial box",
@@ -382,12 +393,13 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     else if (promo.type === "bundle-gift") runBundleGift(promo);
   }
 
-  /* 3 of the same flavour at a fixed price, plus scanned gifts. */
+  /* N at a fixed price, plus any scanned gifts.
+     Mixing is allowed unless `sameBy` says otherwise. */
   function runBundleFixed(promo) {
     const pool = eligible.filter((l) => matchesSelector(l, promo.require));
     if (!pool.length) return;
 
-    // Group by flavour, because a mixed three does not qualify.
+    // Group first — the 600ml trio may not mix flavours, diapers may mix sizes.
     const groups = {};
     for (const l of pool) {
       const key = promo.require.sameBy === "flavour" ? flavourOf(l) : "*";
@@ -397,47 +409,63 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     let times = 0;
     let saving = 0;
 
-    for (const [flavour, group] of Object.entries(groups)) {
-      const qty = group.reduce((s, l) => s + l.qty, 0);
-      const sets = Math.floor(qty / promo.require.qty);
+    for (const [groupKey, group] of Object.entries(groups)) {
+      // Work in units, because sizes in one deal can have different prices.
+      const units = [];
+      for (const l of group) for (let i = 0; i < l.qty; i++) units.push(l);
+      if (units.length < promo.require.qty) continue;
+
+      /* Dearest first. Four nappies for RM160 should consume the four most
+         expensive in the basket — that is the cheapest outcome for the
+         customer, and the one they would arrange by hand if they knew the
+         rule. */
+      units.sort((a, b) => b.unitPrice - a.unitPrice);
+
+      const perLine = {};
+      let used = 0;
+      let sets = 0;
+
+      while (units.length - used >= promo.require.qty) {
+        const set = units.slice(used, used + promo.require.qty);
+        const atFullPrice = set.reduce((t, u) => t + u.unitPrice, 0);
+
+        /* Only apply where it actually saves money. Units are sorted dearest
+           first, so once a set costs less at retail than the deal price, every
+           later set does too — stop. */
+        if (atFullPrice <= promo.price) break;
+
+        // Split the deal price across its units in proportion to their price,
+        // so each line is charged something defensible on the receipt.
+        let left = promo.price;
+        set.forEach((u, i) => {
+          const share =
+            i === set.length - 1
+              ? left
+              : Math.round((promo.price * u.unitPrice) / atFullPrice);
+          left -= share;
+          perLine[u.key] = (perLine[u.key] || 0) + share;
+        });
+
+        saving += atFullPrice - promo.price;
+        used += promo.require.qty;
+        sets++;
+      }
+
       if (!sets) continue;
 
-      // Charge the set price for the units inside sets, normal price for the
-      // remainder. Spread across the group's lines in order.
-      let inSets = sets * promo.require.qty;
-      let setTotal = sets * promo.price;
-      let normal = 0;
-
-      for (const l of group) {
-        const take = Math.min(l.qty, inSets);
-        inSets -= take;
-        normal += (l.qty - take) * l.unitPrice;
+      // Whatever did not make it into a deal is charged normally.
+      for (let i = used; i < units.length; i++) {
+        const u = units[i];
+        perLine[u.key] = (perLine[u.key] || 0) + u.unitPrice;
       }
 
-      // Attribute the whole flavour group's price to its lines proportionally,
-      // simplest correct approach: put the set price on the first line and
-      // charge the rest normally.
-      let remainingSet = setTotal;
-      let remainingInSets = sets * promo.require.qty;
       for (const l of group) {
-        const take = Math.min(l.qty, remainingInSets);
-        remainingInSets -= take;
-        const share =
-          take === 0
-            ? 0
-            : Math.min(
-                remainingSet,
-                Math.round((setTotal * take) / (sets * promo.require.qty)),
-              );
-        remainingSet -= share;
-        linePrices[l.key] = share + (l.qty - take) * l.unitPrice;
-        if (take > 0) {
-          lineNotes[l.key] = `${promo.short}${flavour ? ` · ${flavour}` : ""}`;
-        }
+        linePrices[l.key] = perLine[l.key] ?? l.unitPrice * l.qty;
+        lineNotes[l.key] = `${promo.short}${
+          groupKey !== "*" ? ` · ${groupKey}` : ""
+        }`;
       }
 
-      const gross = group.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-      saving += gross - (setTotal + normal);
       times += sets;
     }
 

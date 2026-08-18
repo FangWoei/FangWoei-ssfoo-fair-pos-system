@@ -146,11 +146,72 @@ check("4 of the same kids item -> 2 free", () => {
 const dia = (size, q) => line(`Diaper ${size}`, 4500, q, ["diaper"]);
 const trial = (q) => line("Diaper trial box M", 1500, q, ["diapertrial"]);
 
-check("4 packs mixed sizes + trial box = trial free", () => {
+check("4 packs mixed sizes + trial box = RM160 and the trial free", () => {
   const lines = [dia("M", 2), dia("L", 2), trial(1)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
-  assert.equal(total(lines, r), 4 * 4500);
+  assert.equal(total(lines, r), 16000);
+});
+
+/* ---------- any 4 nappies for RM160, sizes mixed ---------- */
+
+const diaP = (size, price, q) => line(`Diaper ${size}`, price, q, ["diaper"]);
+
+check("3 NB + 1 S = RM160", () => {
+  const lines = [diaP("NB", 4290, 3), diaP("S", 4290, 1)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 16000);
+});
+
+check("4 of one size = RM160 too", () => {
+  const lines = [diaP("M", 4290, 4)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 16000);
+});
+
+check("3 packs is not a deal — full price", () => {
+  const lines = [diaP("NB", 4290, 2), diaP("S", 4290, 1)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 3 * 4290);
+});
+
+check("5 packs = one deal plus one at full price", () => {
+  const lines = [diaP("NB", 4290, 5)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 16000 + 4290);
+});
+
+check("8 packs mixed = two deals", () => {
+  const lines = [diaP("NB", 4290, 3), diaP("S", 4290, 3), diaP("L", 4290, 2)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 32000);
+});
+
+check(
+  "with different prices per size, the DEAREST four go into the deal",
+  () => {
+    // 2 premium at RM50, 3 basic at RM30. Best for the customer: the deal takes
+    // 50+50+30+30 (RM160 worth of retail) and the last basic is charged.
+    const lines = [diaP("XXL", 5000, 2), diaP("NB", 3000, 3)];
+    const r = applyPromotions(lines);
+    assert.equal(total(lines, r), 16000 + 3000);
+  },
+);
+
+check("a deal that costs the customer MORE is not applied", () => {
+  // Four cheap packs at RM30 = RM120, well under the RM160 deal price.
+  const lines = [diaP("NB", 3000, 4)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 12000);
+  // The RM160 deal is skipped, but four packs still earn a free trial box.
+  assert.equal(
+    r.applied.some((a) => a.id === "diaper-4-160"),
+    false,
+  );
+  assert.equal(
+    r.applied.some((a) => a.id === "diaper-trial"),
+    true,
+  );
 });
 
 check("4 packs but no trial box scanned -> blocked", () => {
