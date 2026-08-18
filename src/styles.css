@@ -1070,7 +1070,11 @@ textarea {
   animation: slide 0.19s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 .toast.warn {
-  border-left-color: var(--amber);
+  border-left-color: var(--rose);
+  background: var(--rose-deep);
+  font-weight: 500;
+  font-size: 14px;
+  max-width: 420px;
 }
 @keyframes slide {
   from {

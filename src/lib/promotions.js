@@ -56,9 +56,9 @@ export const PROMOTIONS = [
     gifts: [
       {
         tag: "h2t200",
-        flavour: "original",
+        flavour: "calming",
         qty: 1,
-        label: "Head to Toe 200ml Original",
+        label: "Head to Toe 200ml Calming Scent",
       },
       {
         tag: "h2t200",
@@ -100,6 +100,93 @@ export const PROMOTIONS = [
 import { priceCart } from "./pricing.js";
 
 /* ────────────────────────────── the engine ────────────────────────────── */
+
+/**
+ * How many complete sets of a promotion the cart has earned.
+ *
+ * For the 600ml trio this counts per flavour, because a mixed three is not a
+ * set: two Calming and one Vanilla earns nothing. For diapers it is a plain
+ * count, because sizes may be mixed.
+ */
+export function earnedSets(promo, lines) {
+  const pool = lines.filter((l) => !l.discount && hasTag(l, promo.require.tag));
+  if (!pool.length) return 0;
+
+  if (promo.require.sameBy === "flavour") {
+    const byFlavour = {};
+    for (const l of pool) {
+      const f = flavourOf(l);
+      byFlavour[f] = (byFlavour[f] || 0) + l.qty;
+    }
+    return Object.values(byFlavour).reduce(
+      (s, qty) => s + Math.floor(qty / promo.require.qty),
+      0,
+    );
+  }
+
+  const qty = pool.reduce((s, l) => s + l.qty, 0);
+  return Math.floor(qty / promo.require.qty);
+}
+
+/**
+ * Can this product be scanned into the cart right now?
+ *
+ * Gift barcodes are refused until the cart has earned them. A cashier scanning
+ * a free 200ml before the three 600ml are in gets told why, rather than the
+ * till accepting it and only objecting at the moment of payment — by which
+ * point the bottle is already in the bag.
+ *
+ * Scan the fourth diaper and the trial box unlocks. Scan three 600ml of one
+ * flavour and the two 200ml barcodes unlock. Break the set by removing a
+ * bottle and they lock again.
+ *
+ * @returns {{ ok: boolean, reason?: string }}
+ */
+export function checkCanAdd(product, lines, promotions = PROMOTIONS) {
+  for (const promo of promotions) {
+    for (const gift of promo.gifts || []) {
+      if (!matchesGift(product, gift)) continue;
+
+      const allowed = earnedSets(promo, lines) * gift.qty;
+      const already = lines
+        .filter((l) => matchesGift(l, gift))
+        .reduce((s, l) => s + l.qty, 0);
+
+      if (already < allowed) return { ok: true };
+
+      // This product is a gift and the cart has not earned another one.
+      return {
+        ok: false,
+        reason: allowed
+          ? `All ${allowed} free × ${gift.label} already scanned for ${promo.name}`
+          : needMessage(promo, lines),
+      };
+    }
+  }
+  return { ok: true };
+}
+
+function needMessage(promo, lines) {
+  const pool = lines.filter((l) => !l.discount && hasTag(l, promo.require.tag));
+  const have = pool.reduce((s, l) => s + l.qty, 0);
+
+  if (promo.require.sameBy === "flavour") {
+    const byFlavour = {};
+    for (const l of pool) {
+      const f = flavourOf(l) || "unknown";
+      byFlavour[f] = (byFlavour[f] || 0) + l.qty;
+    }
+    const best = Object.entries(byFlavour).sort((a, b) => b[1] - a[1])[0];
+    if (!best) {
+      return `Scan ${promo.require.qty} of the same flavour first — ${promo.name}`;
+    }
+    const short = promo.require.qty - (best[1] % promo.require.qty);
+    return `Not free yet: needs ${promo.require.qty} of ONE flavour. ${short} more ${best[0]} — flavours cannot be mixed`;
+  }
+
+  const short = promo.require.qty - (have % promo.require.qty);
+  return `Not free yet: scan ${short} more to reach ${promo.require.qty} — ${promo.name}`;
+}
 
 const tagsOf = (line) =>
   (Array.isArray(line.tags) ? line.tags : String(line.tags || "").split(","))

@@ -5,7 +5,7 @@ import { categoryColor } from "../lib/colors";
 import { METHODS, recordSale } from "../lib/db";
 import { openDrawer } from "../lib/drawer";
 import { formatRM, OFFER_NONE, priceLine, toSen } from "../lib/pricing";
-import { priceCartWithPromotions } from "../lib/promotions";
+import { checkCanAdd, priceCartWithPromotions } from "../lib/promotions";
 import { useEnterNav } from "../lib/useEnterNav";
 
 export default function Sell({ products, till, me }) {
@@ -54,6 +54,16 @@ export default function Sell({ products, till, me }) {
   /* ---------- cart ---------- */
 
   function add(product, by = 1) {
+    /* Gift barcodes are refused until the cart has earned them. Catching it
+       here — at the scan — matters: telling the cashier at the payment screen
+       means the free bottle is already in the customer's bag. */
+    const gate = checkCanAdd(product, lines);
+    if (!gate.ok) {
+      notify(gate.reason, "warn");
+      setTerm("");
+      return;
+    }
+
     setLines((prev) => {
       const i = prev.findIndex(
         (l) => l.productId === product.id && !l.discount,
