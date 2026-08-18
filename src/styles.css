@@ -1024,6 +1024,12 @@ textarea {
   cursor: not-allowed;
   background: var(--rose);
 }
+.btn.export {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 13.5px;
+}
 .btn.danger {
   color: var(--red);
 }

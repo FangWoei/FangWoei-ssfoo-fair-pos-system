@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Receipt from "../components/Receipt";
 import { METHODS, watchSalesSince } from "../lib/db";
+import { exportExcel, exportPdf } from "../lib/exportSales";
 import { formatRM } from "../lib/pricing";
 
 const startOfToday = () => {
@@ -15,6 +16,7 @@ export default function Report() {
   const [sales, setSales] = useState([]);
   const [reprint, setReprint] = useState(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
 
   useEffect(
     () =>
@@ -63,6 +65,23 @@ export default function Report() {
     };
   }, [sales]);
 
+  const scopeLabel = scope === "today" ? "today" : "whole fair";
+
+  async function runExport(kind) {
+    setBusy(kind);
+    setError("");
+    try {
+      // A breath so the button can repaint before the work blocks the thread.
+      await new Promise((r) => setTimeout(r, 30));
+      (kind === "excel" ? exportExcel : exportPdf)(sales, scopeLabel);
+    } catch (e) {
+      console.error(e);
+      setError(`Export failed: ${e.message}`);
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-head">
@@ -81,6 +100,19 @@ export default function Report() {
             </button>
           ))}
         </div>
+        <div className="spacer" />
+        <button
+          className="btn export"
+          disabled={!sales.length || busy}
+          onClick={() => runExport("excel")}>
+          {busy === "excel" ? "Building…" : "Export Excel"}
+        </button>
+        <button
+          className="btn export"
+          disabled={!sales.length || busy}
+          onClick={() => runExport("pdf")}>
+          {busy === "pdf" ? "Building…" : "Export PDF"}
+        </button>
       </div>
 
       {error && (
