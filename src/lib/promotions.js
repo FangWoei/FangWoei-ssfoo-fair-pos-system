@@ -217,6 +217,12 @@ export function earnedSets(promo, lines) {
  */
 export function checkCanAdd(product, lines, promotions = PROMOTIONS) {
   for (const promo of promotions) {
+    /* A promotion must never block the product that EARNS it. Scanning the
+       third shampoo is how the free conditioner is unlocked in the first
+       place, so a product that is both trigger and gift — which happens when
+       a range gives away its own members — has to stay scannable. */
+    if (matchesSelector(product, promo.require)) continue;
+
     for (const gift of promo.gifts || []) {
       if (!matchesGift(product, gift)) continue;
 
@@ -227,12 +233,31 @@ export function checkCanAdd(product, lines, promotions = PROMOTIONS) {
 
       if (already < allowed) return { ok: true };
 
-      // This product is a gift and the cart has not earned another one.
+      /* Not entitled to another one. What happens next depends on whether this
+         thing can be sold on its own.
+
+         Most stock can: a customer may walk up and buy a 200ml bottle without
+         any promotion, and refusing that scan loses a sale. So the default is
+         to allow it and charge normally.
+
+         Tick "free-gift stock only" on the product for things that exist just
+         to be given away — gift-with-purchase boxes, trial packs — and the
+         scan is refused instead. */
+      if (product.giftOnly) {
+        return {
+          ok: false,
+          reason: allowed
+            ? `All ${allowed} free × ${gift.label} already scanned for ${promo.name}`
+            : needMessage(promo, lines),
+        };
+      }
+
       return {
-        ok: false,
-        reason: allowed
-          ? `All ${allowed} free × ${gift.label} already scanned for ${promo.name}`
-          : needMessage(promo, lines),
+        ok: true,
+        charged: true,
+        note: allowed
+          ? `${gift.label}: ${allowed} free already scanned, this one is charged`
+          : `Not free yet — charged at normal price. ${needMessage(promo, lines)}`,
       };
     }
   }

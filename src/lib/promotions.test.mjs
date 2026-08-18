@@ -4,6 +4,7 @@ import {
   checkCanAdd,
   earnedSets,
   PROMOTIONS,
+  promotionsFromProducts,
 } from "./promotions.js";
 
 const cases = [];
@@ -186,12 +187,18 @@ check("a line with a manual discount sits out of promotions", () => {
 /* ---------- the scan gate: gift barcodes refused until earned ---------- */
 
 const prod = (name, price, tags) => ({ name, unitPrice: price, tags });
-const P_CALM200 = prod("H2T 200ml Calming", 1200, [
-  "h2t200",
-  "flavour:calming",
-]);
-const P_OAT200 = prod("H2T 200ml Oat", 1200, ["h2t200", "flavour:oat"]);
-const P_TRIAL = prod("Diaper trial box M", 1500, ["diapertrial"]);
+const P_CALM200 = {
+  ...prod("H2T 200ml Calming", 1200, ["h2t200", "flavour:calming"]),
+  giftOnly: true,
+};
+const P_OAT200 = {
+  ...prod("H2T 200ml Oat", 1200, ["h2t200", "flavour:oat"]),
+  giftOnly: true,
+};
+const P_TRIAL = {
+  ...prod("Diaper trial box M", 1500, ["diapertrial"]),
+  giftOnly: true,
+};
 const P_600 = prod("H2T 600ml Calming", 3500, ["h2t600new", "flavour:calming"]);
 
 check("empty cart: the free 200ml barcode is refused", () => {
@@ -282,4 +289,296 @@ const COND_ORI = {
   name: "Conditioner Original",
   price: 1800,
   offer: { type: "none" },
+  giftOnly: true,
 };
+const COND_OAT = {
+  id: "c2",
+  name: "Conditioner Oat",
+  price: 1800,
+  offer: { type: "none" },
+  giftOnly: true,
+};
+const CATALOGUE = [SHAMPOO, COND_ORI, COND_OAT];
+const GIFTP = promotionsFromProducts(CATALOGUE);
+
+const cartLine = (p, qty) => ({
+  key: `x${seq++}`,
+  productId: p.id,
+  name: p.name,
+  unitPrice: p.price,
+  qty,
+  tags: [],
+  discount: null,
+});
+
+check("a gift offer becomes one promotion, with a readable label", () => {
+  assert.equal(GIFTP.length, 1);
+  assert.equal(GIFTP[0].gifts.length, 1);
+  assert.match(GIFTP[0].gifts[0].label, /Original \/ .*Oat/);
+});
+
+check("2 shampoo: the free conditioner is refused", () => {
+  const r = checkCanAdd(
+    { ...COND_OAT, productId: "c2" },
+    [cartLine(SHAMPOO, 2)],
+    GIFTP,
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /1 more/);
+});
+
+check(
+  "3 shampoo: EITHER conditioner unlocks — customer picks the flavour",
+  () => {
+    const cart = [cartLine(SHAMPOO, 3)];
+    assert.equal(
+      checkCanAdd({ ...COND_ORI, productId: "c1" }, cart, GIFTP).ok,
+      true,
+    );
+    assert.equal(
+      checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+      true,
+    );
+  },
+);
+
+check("the 2 free may be mixed: one of each", () => {
+  const cart = [cartLine(SHAMPOO, 3), cartLine(COND_ORI, 1)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    true,
+  );
+});
+
+check("or both the same: two Oat", () => {
+  const cart = [cartLine(SHAMPOO, 3), cartLine(COND_OAT, 1)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    true,
+  );
+});
+
+check("a third free item is refused however they are mixed", () => {
+  const cart = [
+    cartLine(SHAMPOO, 3),
+    cartLine(COND_ORI, 1),
+    cartLine(COND_OAT, 1),
+  ];
+  assert.equal(
+    checkCanAdd({ ...COND_ORI, productId: "c1" }, cart, GIFTP).ok,
+    false,
+  );
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    false,
+  );
+});
+
+check("shampoo charged, both conditioners free", () => {
+  const lines = [
+    cartLine(SHAMPOO, 3),
+    cartLine(COND_ORI, 1),
+    cartLine(COND_OAT, 1),
+  ];
+  const r = applyPromotions(lines, GIFTP);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+  assert.equal(total(lines, r), 3 * 2500);
+});
+
+check("6 shampoo earns 4 free", () => {
+  const cart = [cartLine(SHAMPOO, 6), cartLine(COND_OAT, 3)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    true,
+  );
+  const cart4 = [cartLine(SHAMPOO, 6), cartLine(COND_OAT, 4)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart4, GIFTP).ok,
+    false,
+  );
+});
+
+check("a product with no gift offer produces no promotion", () => {
+  assert.equal(promotionsFromProducts([COND_ORI, COND_OAT]).length, 0);
+});
+
+/* ---------- two prices from one field: RM26.90 each, RM75 for three ---------- */
+
+// Retail price on the product is 26.90. The promotion supplies the set price.
+const r600 = (q) =>
+  line("H2T 600ml Calming", 2690, q, ["h2t600new", "flavour:calming"]);
+
+check("1 bottle = RM26.90", () => {
+  const lines = [r600(1)];
+  assert.equal(total(lines, applyPromotions(lines)), 2690);
+});
+
+check("2 bottles = RM53.80, no promotion", () => {
+  const lines = [r600(2)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 5380);
+  assert.equal(r.applied.length, 0);
+});
+
+check("3 bottles = RM75.00, not RM80.70", () => {
+  const lines = [r600(3), calm200(1), oat200(2)];
+  const r = applyPromotions(lines);
+  assert.equal(total(lines, r), 7500);
+});
+
+check("4 bottles = RM75 + RM26.90 = RM101.90", () => {
+  const lines = [r600(4), calm200(1), oat200(2)];
+  assert.equal(total(lines, applyPromotions(lines)), 7500 + 2690);
+});
+
+check("5 bottles = RM75 + two at retail", () => {
+  const lines = [r600(5), calm200(1), oat200(2)];
+  assert.equal(total(lines, applyPromotions(lines)), 7500 + 2 * 2690);
+});
+
+check("6 bottles = two sets at RM75, not four at retail", () => {
+  const lines = [r600(6), calm200(2), oat200(4)];
+  assert.equal(total(lines, applyPromotions(lines)), 15000);
+});
+
+/* ---------- both at once: a tier on itself AND a gift of others ---------- */
+
+const SHAMPOO2 = {
+  id: "sh2",
+  name: "Shampoo 600ml",
+  price: 2690,
+  // its own price drops at 3
+  offer: { type: "bulk", tiers: [{ qty: 3, price: 7500 }] },
+  // and 3 also earns two free conditioners
+  giftOffer: { buyQty: 3, giftGroups: [{ qty: 2, productIds: ["c1", "c2"] }] },
+};
+const BOTH = promotionsFromProducts([SHAMPOO2, COND_ORI, COND_OAT]);
+
+check("a product can carry a bulk tier and a gift at the same time", () => {
+  assert.equal(BOTH.length, 1);
+  assert.equal(BOTH[0].require.qty, 3);
+});
+
+check("buy 3 at RM75 AND take 2 free conditioners", () => {
+  const lines = [
+    cartLine(SHAMPOO2, 3),
+    cartLine(COND_ORI, 1),
+    cartLine(COND_OAT, 1),
+  ];
+  // promotions zero the gifts; the shampoo line keeps its own bulk price
+  const r = applyPromotions(lines, BOTH);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+  const shampooStillNormal = r.linePrices[lines[0].key] === undefined;
+  assert.ok(
+    shampooStillNormal,
+    "the gift promo must not touch the trigger line price",
+  );
+  assert.equal(r.linePrices[lines[1].key], 0);
+  assert.equal(r.linePrices[lines[2].key], 0);
+});
+
+check("one or two shampoo: normal price, and no free conditioner", () => {
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, [cartLine(SHAMPOO2, 2)], BOTH)
+      .ok,
+    false,
+  );
+});
+
+check("the older offer.type gift shape still works", () => {
+  const legacy = {
+    id: "lg",
+    name: "Old",
+    price: 100,
+    offer: {
+      type: "gift",
+      buyQty: 2,
+      giftGroups: [{ qty: 1, productIds: ["c1"] }],
+    },
+  };
+  assert.equal(promotionsFromProducts([legacy, COND_ORI]).length, 1);
+});
+
+/* ---------- the trigger product is never blocked by its own promotion ---------- */
+
+check(
+  "a product that is both trigger and gift of the same promo stays scannable",
+  () => {
+    // The screenshot case: a 600ml that earns free bottles, and is itself listed
+    // in the gift group. Scanning it must always work — it is how you EARN them.
+    const SELFGIFT = {
+      id: "s1",
+      name: "HTT600 CV",
+      price: 2690,
+      giftOnly: true,
+      giftOffer: {
+        buyQty: 3,
+        giftGroups: [{ qty: 2, productIds: ["s1", "c1"] }],
+      },
+    };
+    const promos = promotionsFromProducts([SELFGIFT, COND_ORI]);
+    assert.equal(
+      checkCanAdd({ ...SELFGIFT, productId: "s1" }, [], promos).ok,
+      true,
+    );
+    assert.equal(
+      checkCanAdd(
+        { ...SELFGIFT, productId: "s1" },
+        [cartLine(SELFGIFT, 2)],
+        promos,
+      ).ok,
+      true,
+    );
+  },
+);
+
+/* ---------- normal stock is charged, not refused ---------- */
+
+const COND_SELLABLE = { ...COND_OAT, giftOnly: false };
+
+check("a sellable gift item is allowed and charged when not yet earned", () => {
+  const r = checkCanAdd(
+    { ...COND_SELLABLE, productId: "c2" },
+    [cartLine(SHAMPOO, 2)],
+    GIFTP,
+  );
+  assert.equal(r.ok, true);
+  assert.equal(r.charged, true);
+  assert.match(r.note, /charged at normal price/i);
+});
+
+check(
+  "a sellable gift item beyond the entitlement is charged, not refused",
+  () => {
+    const cart = [
+      cartLine(SHAMPOO, 3),
+      cartLine(COND_ORI, 1),
+      cartLine(COND_OAT, 1),
+    ];
+    const r = checkCanAdd({ ...COND_SELLABLE, productId: "c2" }, cart, GIFTP);
+    assert.equal(r.ok, true);
+    assert.match(r.note, /already scanned, this one is charged/i);
+  },
+);
+
+check("gift-only stock is still refused", () => {
+  const r = checkCanAdd(
+    { ...COND_OAT, productId: "c2" },
+    [cartLine(SHAMPOO, 2)],
+    GIFTP,
+  );
+  assert.equal(r.ok, false);
+});
+
+let failed = 0;
+for (const [name, fn] of cases) {
+  try {
+    fn();
+    console.log(`  ok    ${name}`);
+  } catch (e) {
+    failed++;
+    console.log(`  FAIL  ${name}\n        ${e.message}`);
+  }
+}
+console.log(`\n${cases.length - failed}/${cases.length} passed`);
+process.exit(failed ? 1 : 0);

@@ -268,6 +268,7 @@ function ProductForm({
 
     await onSave({
       name: f.name.trim(),
+      giftOnly: Boolean(f.giftOnly),
       giftOffer,
       tags,
       barcode: String(f.barcode || "").trim(),
@@ -497,6 +498,30 @@ function ProductForm({
             }
           />
         )}
+
+        <label
+          style={{
+            display: "flex",
+            gap: 9,
+            alignItems: "center",
+            marginBottom: 6,
+          }}>
+          <input
+            type="checkbox"
+            checked={Boolean(f.giftOnly)}
+            onChange={(e) => set("giftOnly", e.target.checked)}
+          />
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
+            Free-gift stock only — cannot be sold on its own
+          </span>
+        </label>
+        <p className="lede">
+          Tick this for things that exist only to be given away — trial boxes,
+          gift-with-purchase bottles. The till then refuses to scan them until a
+          promotion has earned them. Leave it unticked for anything a customer
+          could walk up and buy: an unearned scan is charged at the normal price
+          instead of being blocked, so you never lose a sale.
+        </p>
 
         <div className="section-rule" />
 

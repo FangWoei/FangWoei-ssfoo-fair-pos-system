@@ -81,6 +81,9 @@ export default function Sell({ products, till, me }) {
       setTerm("");
       return;
     }
+    // Allowed, but worth saying why it is not free — so the cashier can offer
+    // the customer the extra item that would earn it.
+    if (gate.note) notify(gate.note);
 
     setLines((prev) => {
       const i = prev.findIndex(
