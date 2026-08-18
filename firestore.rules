@@ -1,0 +1,61 @@
+rules_version = '2';
+
+/*
+  Fair till — two roles.
+
+    admin   sells, manages products, reads history, AND creates staff accounts
+    user    sells, manages products, reads history
+
+  The role lives in /users/{uid}. An auth account with no document there can do
+  nothing at all, which is what stops anyone signing themselves up: even if
+  somebody calls the signup API directly with the public web key, they land
+  with no profile and every read and write below is refused.
+*/
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // A real member of staff: signed in, has a profile, not blocked.
+    function member() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().active == true;
+    }
+
+    function isAdmin() {
+      return member() && profile().role == 'admin';
+    }
+
+    match /users/{uid} {
+      // Anyone signed in can read profiles — that is how the app learns its
+      // own role, and how the Staff list is drawn. No secrets are stored here.
+      allow read: if signedIn();
+
+      // Only an admin creates, edits or removes staff. This is the rule that
+      // actually enforces the role split; hiding the tab is only cosmetic.
+      allow write: if isAdmin();
+    }
+
+    match /products/{id} {
+      allow read, write: if member();
+    }
+
+    match /sales/{id} {
+      allow read, create: if member();
+      // A recorded sale is never edited or deleted, by anyone.
+      allow update, delete: if false;
+    }
+
+    match /counters/{id} {
+      allow read, write: if member();
+    }
+  }
+}

@@ -1,0 +1,8 @@
+Save your Touch 'n Go merchant QR in this folder as exactly:
+
+    tng-qr.png
+
+Screenshot it from the TNG eWallet merchant app, or photograph your printed
+standee and crop it square. The till shows this image full-width during a QR
+payment. If the file is missing you'll see a broken image — the sale still
+works, you just won't have the code on screen.
