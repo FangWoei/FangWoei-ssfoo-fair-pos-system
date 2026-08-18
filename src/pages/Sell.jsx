@@ -258,11 +258,13 @@ export default function Sell({ products, till, me }) {
                 className="tile"
                 style={{ "--chip": categoryColor(p.category) }}
                 onClick={() => add(p)}>
-                {p.offer?.type && p.offer.type !== OFFER_NONE && (
-                  <span className="tile-offer">{offerBadge(p.offer)}</span>
-                )}
                 <span className="tile-name">{p.name}</span>
-                <span className="tile-price">{formatRM(p.price)}</span>
+                <span className="tile-foot">
+                  <span className="tile-price">{formatRM(p.price)}</span>
+                  {p.offer?.type && p.offer.type !== OFFER_NONE && (
+                    <span className="tile-offer">{offerBadge(p.offer)}</span>
+                  )}
+                </span>
               </button>
             ))}
             {shown.length === 0 && (
