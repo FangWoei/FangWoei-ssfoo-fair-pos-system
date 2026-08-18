@@ -1048,6 +1048,16 @@ textarea {
   border-color: #c9ebd8;
   color: var(--green);
 }
+.tag.mix {
+  background: #eaf1fe;
+  border-color: #c9dcfb;
+  color: #1b5fc0;
+}
+.tag.solo {
+  background: var(--amber-wash);
+  border-color: #f3dfbc;
+  color: #8a5000;
+}
 
 .triggerbox {
   border: 1px solid var(--line);

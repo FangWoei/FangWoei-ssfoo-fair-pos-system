@@ -91,14 +91,30 @@ export default function Admin({ products }) {
                     <span className="tag on">{describe(p.offer)}</span>
                   )}
                   {giftConfigOf(p) && (
-                    <span className="tag gift" style={{ marginLeft: 5 }}>
-                      +
-                      {giftConfigOf(p).giftGroups.reduce(
-                        (s, g) => s + g.qty,
-                        0,
-                      )}{" "}
-                      free
-                    </span>
+                    <>
+                      <span className="tag gift" style={{ marginLeft: 5 }}>
+                        buy {giftConfigOf(p).buyQty} free{" "}
+                        {giftConfigOf(p).giftGroups.reduce(
+                          (s, g) => s + g.qty,
+                          0,
+                        )}
+                      </span>
+                      {/* Whether the buy count is shared, or this product alone.
+                          Getting this wrong is invisible otherwise: eight sizes
+                          each set up separately look identical to one group of
+                          eight, and only the first refuses to mix. */}
+                      <span
+                        className={
+                          giftConfigOf(p).triggerIds?.length
+                            ? "tag mix"
+                            : "tag solo"
+                        }
+                        style={{ marginLeft: 5 }}>
+                        {giftConfigOf(p).triggerIds?.length
+                          ? `mixed across ${giftConfigOf(p).triggerIds.length + 1}`
+                          : "this product only"}
+                      </span>
+                    </>
                   )}
                   {(!p.offer?.type || p.offer.type === OFFER_NONE) &&
                     !giftConfigOf(p) && <span className="tag">None</span>}
