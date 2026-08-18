@@ -1058,6 +1058,10 @@ textarea {
   border-color: #f3dfbc;
   color: #8a5000;
 }
+.table td .tag {
+  font-weight: 500;
+  white-space: nowrap;
+}
 
 .triggerbox {
   border: 1px solid var(--line);

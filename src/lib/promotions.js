@@ -578,3 +578,28 @@ export function priceCartWithPromotions(lines, promotions = PROMOTIONS) {
     blockers: promo.blockers,
   };
 }
+
+/**
+ * Which promotions a product takes part in, and how.
+ *
+ * Configuration errors here are invisible: a trial box with a mistyped tag
+ * looks identical to a correct one, and only shows up as a promotion that
+ * refuses to complete at the counter. This lets the Products page say plainly
+ * "this product is in no promotion", which is the fact you actually need.
+ */
+export function promoRolesFor(product, promotions = PROMOTIONS) {
+  const earns = [];
+  const freeIn = [];
+
+  for (const promo of promotions) {
+    if (matchesSelector(product, promo.require)) earns.push(promo.name);
+    for (const gift of promo.gifts || []) {
+      if (matchesGift(product, gift)) {
+        freeIn.push(promo.name);
+        break;
+      }
+    }
+  }
+
+  return { earns, freeIn };
+}

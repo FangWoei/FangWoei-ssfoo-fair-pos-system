@@ -12,7 +12,12 @@ import {
   toRMInput,
   toSen,
 } from "../lib/pricing";
-import { giftConfigOf } from "../lib/promotions";
+import {
+  giftConfigOf,
+  promoRolesFor,
+  PROMOTIONS,
+  promotionsFromProducts,
+} from "../lib/promotions";
 import { useEnterNav } from "../lib/useEnterNav";
 
 const blank = () => ({
@@ -28,6 +33,10 @@ const blank = () => ({
 export default function Admin({ products }) {
   const notify = useToast();
   const [editing, setEditing] = useState(null);
+
+  // Every promotion in play: the coded ones plus everything set up on a
+  // product. Used to show what each product actually takes part in.
+  const allPromos = [...PROMOTIONS, ...promotionsFromProducts(products)];
 
   return (
     <div className="page">
@@ -67,6 +76,7 @@ export default function Admin({ products }) {
               <th>Name</th>
               <th>Category</th>
               <th>Promo tags</th>
+              <th>In promotion</th>
               <th>Price</th>
               <th>Offer</th>
               <th>On the grid</th>
@@ -82,8 +92,11 @@ export default function Admin({ products }) {
                 </td>
                 <td
                   className="mono"
-                  style={{ color: "var(--text-dim)", fontSize: 12 }}>
+                  style={{ color: "var(--ink-dim)", fontSize: 12 }}>
                   {p.tags?.length ? p.tags.join(", ") : "—"}
+                </td>
+                <td style={{ fontSize: 12 }}>
+                  <PromoRoles product={p} promos={allPromos} />
                 </td>
                 <td className="mono">{formatRM(p.price)}</td>
                 <td>
@@ -160,6 +173,34 @@ export default function Admin({ products }) {
         />
       )}
     </div>
+  );
+}
+
+/** What this product does in the promotions, in plain words. */
+function PromoRoles({ product, promos }) {
+  const { earns, freeIn } = promoRolesFor(product, promos);
+
+  if (!earns.length && !freeIn.length) {
+    return (
+      <span style={{ color: "var(--ink-faint)" }}>
+        {product.giftOnly ? "gift-only, but in NO promotion" : "—"}
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      {earns.map((n) => (
+        <span key={`e${n}`} className="tag mix">
+          earns: {n}
+        </span>
+      ))}
+      {freeIn.map((n) => (
+        <span key={`f${n}`} className="tag gift">
+          free in: {n}
+        </span>
+      ))}
+    </span>
   );
 }
 
