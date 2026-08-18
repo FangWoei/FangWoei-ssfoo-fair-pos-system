@@ -27,6 +27,7 @@ export default function Sell({ products, till, me }) {
   const [editing, setEditing] = useState(null); // line key being discounted
   const [printJob, setPrintJob] = useState(null);
   const scanRef = useRef(null);
+  const linesRef = useRef(null);
 
   const active = useMemo(
     () => products.filter((p) => p.active !== false),
@@ -61,6 +62,14 @@ export default function Sell({ products, till, me }) {
 
   const cart = priceCartWithPromotions(lines, promos);
   const blocked = cart.blockers.length > 0;
+
+  /* Follow the tape down as items are added. On a long sale the newest line is
+     the one the cashier needs to see — that it went in, at what price, and
+     whether an offer caught it. */
+  useEffect(() => {
+    const el = linesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
 
   /* Keep the scanner input focused whenever nothing else is. A barcode gun is
      just a fast keyboard, so this is all the "scanner support" it needs. */
@@ -273,23 +282,25 @@ export default function Sell({ products, till, me }) {
               </div>
             </div>
 
-            <div className="lines">
-              {cart.lines.length === 0 && (
-                <p className="empty">
-                  Tap a product or scan a barcode.
-                  <br />
-                  The sale builds up here.
-                </p>
-              )}
-              {cart.lines.map((l) => (
-                <CartLine
-                  key={l.key}
-                  line={l}
-                  onQty={(q) => setQty(l.key, q)}
-                  onRemove={() => removeLine(l.key)}
-                  onDiscount={() => setEditing(l.key)}
-                />
-              ))}
+            <div className="lines-wrap">
+              <div className="lines" ref={linesRef}>
+                {cart.lines.length === 0 && (
+                  <p className="empty">
+                    Tap a product or scan a barcode.
+                    <br />
+                    The sale builds up here.
+                  </p>
+                )}
+                {cart.lines.map((l) => (
+                  <CartLine
+                    key={l.key}
+                    line={l}
+                    onQty={(q) => setQty(l.key, q)}
+                    onRemove={() => removeLine(l.key)}
+                    onDiscount={() => setEditing(l.key)}
+                  />
+                ))}
+              </div>
             </div>
 
             <div className="totals mono">

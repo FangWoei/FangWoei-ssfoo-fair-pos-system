@@ -428,9 +428,59 @@ textarea {
 
 .lines {
   flex: 1;
-  min-height: 0;
+  min-height: 120px; /* never collapses to nothing when totals grow */
   overflow-y: auto;
+  overscroll-behavior: contain; /* stops the page bouncing at either end */
+  scroll-behavior: smooth;
   padding: 5px 0;
+}
+
+/* A scrollbar you can actually see and grab. The default hairline is easy to
+   miss on a long sale, and a cashier who cannot tell there are more lines
+   above will not think to look. */
+.lines::-webkit-scrollbar {
+  width: 11px;
+}
+.lines::-webkit-scrollbar-track {
+  background: #f6f3ea;
+}
+.lines::-webkit-scrollbar-thumb {
+  background: #c9c2ae;
+  border-radius: 6px;
+  border: 3px solid #f6f3ea;
+}
+.lines::-webkit-scrollbar-thumb:hover {
+  background: #a9a18b;
+}
+/* Deliberately NOT setting scrollbar-width / scrollbar-color: where Chrome
+   sees the standard properties it ignores the ::-webkit- rules above and
+   draws its own hairline bar, which is the thing being fixed here. */
+
+/* Soft fades at the top and bottom of the tape, so it is obvious the list runs
+   past the edge rather than ending there. */
+.lines-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.lines-wrap::before,
+.lines-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 11px;
+  height: 14px;
+  pointer-events: none;
+  z-index: 1;
+}
+.lines-wrap::before {
+  top: 0;
+  background: linear-gradient(var(--paper), transparent);
+}
+.lines-wrap::after {
+  bottom: 0;
+  background: linear-gradient(transparent, var(--paper));
 }
 .empty {
   padding: 52px 26px;
