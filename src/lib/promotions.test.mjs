@@ -544,7 +544,7 @@ check("a sellable gift item is allowed and charged when not yet earned", () => {
   );
   assert.equal(r.ok, true);
   assert.equal(r.charged, true);
-  assert.match(r.note, /charged at normal price/i);
+  assert.match(r.note, /Charged at normal price/i);
 });
 
 check(
@@ -557,7 +557,7 @@ check(
     ];
     const r = checkCanAdd({ ...COND_SELLABLE, productId: "c2" }, cart, GIFTP);
     assert.equal(r.ok, true);
-    assert.match(r.note, /already scanned, this one is charged/i);
+    assert.match(r.note, /already scanned/i);
   },
 );
 
@@ -569,6 +569,65 @@ check("gift-only stock is still refused", () => {
   );
   assert.equal(r.ok, false);
 });
+
+/* ---------- a gift claimed by several promotions ---------- */
+
+check(
+  "a bottle earned by ONE promotion is free even if another has not earned it",
+  () => {
+    // Two 600ml lines, each giving away the same 200ml. Only one is in the cart.
+    const A = {
+      id: "a1",
+      name: "600 A",
+      price: 2690,
+      giftOffer: { buyQty: 3, giftGroups: [{ qty: 1, productIds: ["g1"] }] },
+    };
+    const B = {
+      id: "b1",
+      name: "600 B",
+      price: 2690,
+      giftOffer: { buyQty: 3, giftGroups: [{ qty: 1, productIds: ["g1"] }] },
+    };
+    const G = { id: "g1", name: "200 Gift", price: 1200, giftOnly: true };
+    const promos = promotionsFromProducts([A, B, G]);
+
+    // Three of A earns the gift. B has earned nothing — must not veto.
+    const cart = [cartLine(A, 3)];
+    assert.equal(checkCanAdd({ ...G, productId: "g1" }, cart, promos).ok, true);
+
+    // And it is free exactly once, not twice.
+    const lines = [cartLine(A, 3), cartLine(G, 1)];
+    const r = applyPromotions(lines, promos);
+    assert.equal(r.linePrices[lines[1].key], 0);
+    const totalSaving = r.applied.reduce((s, a) => s + a.saving, 0);
+    assert.equal(totalSaving, 1200, "the gift must be counted as saved once");
+  },
+);
+
+check(
+  "with neither promotion earned, the message names the closest one",
+  () => {
+    const A = {
+      id: "a2",
+      name: "600 A",
+      price: 2690,
+      giftOffer: { buyQty: 3, giftGroups: [{ qty: 1, productIds: ["g2"] }] },
+    };
+    const B = {
+      id: "b2",
+      name: "600 B",
+      price: 2690,
+      giftOffer: { buyQty: 3, giftGroups: [{ qty: 1, productIds: ["g2"] }] },
+    };
+    const G = { id: "g2", name: "200 Gift", price: 1200, giftOnly: true };
+    const promos = promotionsFromProducts([A, B, G]);
+
+    const r = checkCanAdd({ ...G, productId: "g2" }, [cartLine(B, 2)], promos);
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /600 B/, "should talk about the deal in progress");
+    assert.equal((r.reason.match(/Not free yet/g) || []).length, 0);
+  },
+);
 
 let failed = 0;
 for (const [name, fn] of cases) {
