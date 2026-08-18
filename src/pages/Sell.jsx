@@ -4,7 +4,12 @@ import Receipt from "../components/Receipt";
 import { categoryColor } from "../lib/colors";
 import { METHODS, recordSale } from "../lib/db";
 import { openDrawer } from "../lib/drawer";
-import { formatRM, OFFER_NONE, priceLine, toSen } from "../lib/pricing";
+import {
+  PAYMENT_CHECKS,
+  isVerified,
+  looksLikePaymentToken,
+} from "../lib/payments";
+import { OFFER_NONE, formatRM, priceLine, toSen } from "../lib/pricing";
 import { checkCanAdd, priceCartWithPromotions } from "../lib/promotions";
 import { useEnterNav } from "../lib/useEnterNav";
 
@@ -134,7 +139,8 @@ export default function Sell({ products, till, me }) {
       method,
       cashGiven: extra.cashGiven ?? 0,
       change: extra.change ?? 0,
-      ref: extra.ref || "",
+      ref: (extra.ref || "").trim(),
+      verified: isVerified(method, extra.ref),
     };
 
     setPaying(null);
@@ -332,24 +338,12 @@ export default function Sell({ products, till, me }) {
           onDone={finish}
         />
       )}
-      {paying === "qr" && (
+      {(paying === "qr" || paying === "card") && (
         <ConfirmModal
-          title="Touch 'n Go"
+          method={paying}
           due={cart.total}
-          note="Show the QR, wait for the customer's paid screen, then confirm."
-          showQR
           onCancel={() => setPaying(null)}
-          onDone={(ref) => finish("qr", { ref })}
-        />
-      )}
-      {paying === "card" && (
-        <ConfirmModal
-          title="Card"
-          due={cart.total}
-          note="Key the amount into the terminal. Confirm once it approves."
-          refLabel="Approval code (optional)"
-          onCancel={() => setPaying(null)}
-          onDone={(ref) => finish("card", { ref })}
+          onDone={(ref) => finish(paying, { ref })}
         />
       )}
       {editLine && (
@@ -504,45 +498,73 @@ function CashModal({ due, onCancel, onDone }) {
   );
 }
 
-function ConfirmModal({
-  title,
-  due,
-  note,
-  showQR,
-  refLabel,
-  onCancel,
-  onDone,
-}) {
+/**
+ * QR and card both come down to a person looking at a screen and saying yes,
+ * so the button names the thing they must be looking at. "Customer's phone
+ * shows PAID" is much harder to press on autopilot than "Confirm".
+ */
+function ConfirmModal({ method, due, onCancel, onDone }) {
   const enter = useEnterNav();
+  const cfg = PAYMENT_CHECKS[method];
   const [ref, setRef] = useState("");
+  const clean = ref.trim();
+  const isToken = looksLikePaymentToken(clean);
+  const blocked = (cfg.requireRef && !clean) || isToken;
+
   return (
     <Scrim onCancel={onCancel} nav={enter}>
-      <h3>{title}</h3>
-      <p className="lede">{note}</p>
+      <h3>{cfg.title}</h3>
+      <p className="lede">{cfg.instruction}</p>
+
       <div className="due mono">
         <small>Amount due</small>
         <b className="figure">{formatRM(due)}</b>
       </div>
-      {showQR && (
+
+      {method === "qr" && (
         <div className="qrbox">
-          <img src="/tng-qr.png" alt="Touch 'n Go QR code" />
-          <p>Customer scans this code</p>
+          <img src="/duitnow-qr.png" alt="DuitNow QR code" />
+          <p>Or point the standee at the customer</p>
         </div>
       )}
+
       <label className="field">
-        <span>{refLabel || "Reference (optional)"}</span>
+        <span>{cfg.refLabel}</span>
         <input
           className="mono"
           value={ref}
+          autoFocus
           onChange={(e) => setRef(e.target.value)}
         />
       </label>
+      <p className="lede" style={{ marginTop: -8 }}>
+        {cfg.refHint}
+      </p>
+
+      {isToken && (
+        <p className="unverified danger">
+          That looks like the customer's own payment code, not a reference.
+          Scanning it here cannot take payment, and it must not be stored —
+          clear the box. To charge a customer's code you need the TNG Merchant
+          app, which does the charging and then gives you a reference to type.
+        </p>
+      )}
+
+      {cfg.warnWithoutRef && !clean && !isToken && (
+        <p className="unverified">
+          No reference — this sale will be flagged unverified in the Sales tab.
+        </p>
+      )}
+
       <div className="actions">
         <button className="btn" onClick={onCancel}>
-          Cancel
+          {cfg.declineLabel}
         </button>
-        <button className="btn primary" onClick={() => onDone(ref)} autoFocus>
-          Payment received
+        <button
+          className="btn primary"
+          disabled={blocked}
+          onClick={() => onDone(clean)}>
+          {cfg.confirmLabel}
         </button>
       </div>
     </Scrim>

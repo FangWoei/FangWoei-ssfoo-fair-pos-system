@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { watchSalesSince, METHODS } from '../lib/db';
-import { formatRM } from '../lib/pricing';
-import Receipt from '../components/Receipt';
+import { useEffect, useMemo, useState } from "react";
+import Receipt from "../components/Receipt";
+import { METHODS, watchSalesSince } from "../lib/db";
+import { formatRM } from "../lib/pricing";
 
 const startOfToday = () => {
   const d = new Date();
@@ -11,19 +11,19 @@ const startOfToday = () => {
 const fairStart = () => new Date(Date.now() - 5 * 864e5);
 
 export default function Report() {
-  const [scope, setScope] = useState('today');
+  const [scope, setScope] = useState("today");
   const [sales, setSales] = useState([]);
   const [reprint, setReprint] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(
     () =>
       watchSalesSince(
-        scope === 'today' ? startOfToday() : fairStart(),
+        scope === "today" ? startOfToday() : fairStart(),
         setSales,
-        setError
+        setError,
       ),
-    [scope]
+    [scope],
   );
 
   useEffect(() => {
@@ -34,13 +34,17 @@ export default function Report() {
 
   const s = useMemo(() => {
     const byMethod = {};
+    const countByMethod = {};
     const byProduct = {};
     let total = 0;
     let saved = 0;
+    let unverified = 0;
     for (const sale of sales) {
       total += sale.total || 0;
       saved += sale.saved || 0;
       byMethod[sale.method] = (byMethod[sale.method] || 0) + (sale.total || 0);
+      countByMethod[sale.method] = (countByMethod[sale.method] || 0) + 1;
+      if (sale.method !== "cash" && sale.verified === false) unverified++;
       for (const it of sale.items || []) {
         const e = (byProduct[it.name] ||= { qty: 0, total: 0 });
         e.qty += it.qty;
@@ -51,6 +55,8 @@ export default function Report() {
       total,
       saved,
       byMethod,
+      countByMethod,
+      unverified,
       top: Object.entries(byProduct)
         .sort((a, b) => b[1].total - a[1].total)
         .slice(0, 10),
@@ -63,10 +69,14 @@ export default function Report() {
         <h1>Sales</h1>
         <div className="tabs">
           {[
-            ['today', 'Today'],
-            ['fair', 'Whole fair'],
+            ["today", "Today"],
+            ["fair", "Whole fair"],
           ].map(([id, label]) => (
-            <button key={id} className="tab" aria-current={scope === id} onClick={() => setScope(id)}>
+            <button
+              key={id}
+              className="tab"
+              aria-current={scope === id}
+              onClick={() => setScope(id)}>
               {label}
             </button>
           ))}
@@ -74,31 +84,62 @@ export default function Report() {
       </div>
 
       {error && (
-        <p style={{ color: 'var(--amber)', fontSize: 13, marginBottom: 16, maxWidth: 640, lineHeight: 1.5 }}>
+        <p
+          style={{
+            color: "var(--amber)",
+            fontSize: 13,
+            marginBottom: 16,
+            maxWidth: 640,
+            lineHeight: 1.5,
+          }}>
           {error}
         </p>
       )}
 
       <div className="stats">
-        <div className="stat" style={{ '--chip': 'var(--marigold)' }}>
+        <div className="stat" style={{ "--chip": "var(--marigold)" }}>
           <small>Takings</small>
           <b className="figure">{formatRM(s.total)}</b>
         </div>
-        <div className="stat" style={{ '--chip': 'var(--sky)' }}>
+        <div className="stat" style={{ "--chip": "var(--sky)" }}>
           <small>Sales</small>
           <b className="figure">{sales.length}</b>
         </div>
-        <div className="stat" style={{ '--chip': 'var(--jade)' }}>
+        <div className="stat" style={{ "--chip": "var(--jade)" }}>
           <small>Given away in offers</small>
           <b className="figure">{formatRM(s.saved)}</b>
         </div>
         {Object.keys(METHODS).map((m) =>
           s.byMethod[m] ? (
-            <div className="stat" key={m} style={{ '--chip': `var(--pay-${m})` }}>
-              <small>{METHODS[m].label}</small>
+            <div
+              className="stat"
+              key={m}
+              style={{ "--chip": `var(--pay-${m})` }}>
+              <small>
+                {METHODS[m].label} · {s.countByMethod[m]}{" "}
+                {s.countByMethod[m] === 1 ? "sale" : "sales"}
+              </small>
               <b className="figure">{formatRM(s.byMethod[m])}</b>
             </div>
-          ) : null
+          ) : null,
+        )}
+      </div>
+
+      <div className="reconcile">
+        <strong>Closing check</strong>
+        <span>
+          Match the DuitNow figure against your Public Bank merchant records,
+          and the card figure against the terminal's batch report — count of
+          sales as well as the amount. A count that matches but a total that
+          does not usually means one sale went through at the wrong amount.
+        </span>
+        {s.unverified > 0 && (
+          <span className="warn">
+            {s.unverified} QR or card{" "}
+            {s.unverified === 1 ? "sale has" : "sales have"} no reference
+            recorded. Chase those first — they are the hardest to trace once the
+            day is over.
+          </span>
         )}
       </div>
 
@@ -110,7 +151,7 @@ export default function Report() {
               <tr>
                 <th>Product</th>
                 <th>Sold</th>
-                <th style={{ textAlign: 'right' }}>Takings</th>
+                <th style={{ textAlign: "right" }}>Takings</th>
               </tr>
             </thead>
             <tbody>
@@ -118,7 +159,7 @@ export default function Report() {
                 <tr key={name}>
                   <td>{name}</td>
                   <td className="mono">{v.qty}</td>
-                  <td className="mono" style={{ textAlign: 'right' }}>
+                  <td className="mono" style={{ textAlign: "right" }}>
                     {formatRM(v.total)}
                   </td>
                 </tr>
@@ -137,8 +178,9 @@ export default function Report() {
             <th>Till</th>
             <th>Cashier</th>
             <th>Paid by</th>
+            <th>Reference</th>
             <th>Items</th>
-            <th style={{ textAlign: 'right' }}>Total</th>
+            <th style={{ textAlign: "right" }}>Total</th>
             <th />
           </tr>
         </thead>
@@ -146,32 +188,44 @@ export default function Report() {
           {sales.map((sale) => (
             <tr key={sale.id}>
               <td className="mono">{sale.receiptNo}</td>
-              <td className="mono" style={{ color: 'var(--text-dim)' }}>
+              <td className="mono" style={{ color: "var(--text-dim)" }}>
                 {sale.localAt?.toDate
-                  ? sale.localAt.toDate().toLocaleTimeString('en-MY', {
-                      hour: '2-digit',
-                      minute: '2-digit',
+                  ? sale.localAt.toDate().toLocaleTimeString("en-MY", {
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })
-                  : '—'}
+                  : "—"}
               </td>
-              <td style={{ color: 'var(--text-dim)' }}>{sale.till}</td>
-              <td style={{ color: 'var(--text-dim)' }}>{sale.cashierName || '—'}</td>
+              <td style={{ color: "var(--text-dim)" }}>{sale.till}</td>
+              <td style={{ color: "var(--text-dim)" }}>
+                {sale.cashierName || "—"}
+              </td>
               <td>{METHODS[sale.method]?.label || sale.method}</td>
+              <td className="mono" style={{ fontSize: 12 }}>
+                {sale.ref ? (
+                  sale.ref
+                ) : sale.method === "cash" ? (
+                  <span style={{ color: "var(--ink-faint)" }}>—</span>
+                ) : (
+                  <span className="tag off">unverified</span>
+                )}
+              </td>
               <td className="mono">{sale.qty}</td>
-              <td className="mono" style={{ textAlign: 'right' }}>
+              <td className="mono" style={{ textAlign: "right" }}>
                 {formatRM(sale.total)}
               </td>
-              <td style={{ textAlign: 'right' }}>
+              <td style={{ textAlign: "right" }}>
                 <button
                   className="linkbtn"
-                  style={{ color: 'var(--text-dim)' }}
+                  style={{ color: "var(--text-dim)" }}
                   onClick={() =>
                     setReprint({
                       ...sale,
-                      at: sale.localAt?.toDate ? sale.localAt.toDate() : Date.now(),
+                      at: sale.localAt?.toDate
+                        ? sale.localAt.toDate()
+                        : Date.now(),
                     })
-                  }
-                >
+                  }>
                   Reprint
                 </button>
               </td>
@@ -179,7 +233,7 @@ export default function Report() {
           ))}
           {sales.length === 0 && (
             <tr>
-              <td colSpan={8} style={{ color: 'var(--text-dim)' }}>
+              <td colSpan={9} style={{ color: "var(--text-dim)" }}>
                 No sales in this period yet.
               </td>
             </tr>
