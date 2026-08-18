@@ -10,12 +10,13 @@
  *   3. plain unit price
  */
 
-export const OFFER_NONE = 'none';
-export const OFFER_FREEBIE = 'freebie'; // buy X, get Y free
-export const OFFER_BULK = 'bulk'; // n for RM y
+export const OFFER_NONE = "none";
+export const OFFER_FREEBIE = "freebie"; // buy X, get Y free
+export const OFFER_BULK = "bulk"; // n for RM y
+export const OFFER_GIFT = "gift"; // buy X of this, free Y of OTHER products
 
 export function emptyOffer() {
-  return { type: OFFER_NONE, buyQty: 0, freeQty: 0, tiers: [] };
+  return { type: OFFER_NONE, buyQty: 0, freeQty: 0, tiers: [], giftGroups: [] };
 }
 
 /** Tiers, normalised: sorted, de-duped by qty (cheapest wins), qty>=2 only. */
@@ -114,8 +115,8 @@ export function priceLine({ unitPrice, qty, offer, discount }) {
     total: gross,
     saved: 0,
     freeQty: 0,
-    rule: 'unit',
-    note: '',
+    rule: "unit",
+    note: "",
     parts: [],
     upsell: null,
   };
@@ -125,7 +126,7 @@ export function priceLine({ unitPrice, qty, offer, discount }) {
   // 1. Manual discount wins outright. Never stacked with an offer.
   if (discount && Number(discount.value) > 0) {
     let off =
-      discount.type === 'percent'
+      discount.type === "percent"
         ? Math.round((gross * Math.min(Number(discount.value), 100)) / 100)
         : Math.round(Number(discount.value));
     off = Math.max(0, Math.min(off, gross));
@@ -133,9 +134,9 @@ export function priceLine({ unitPrice, qty, offer, discount }) {
       ...base,
       total: gross - off,
       saved: off,
-      rule: 'discount',
+      rule: "discount",
       note:
-        discount.type === 'percent'
+        discount.type === "percent"
           ? `Discount ${discount.value}%`
           : `Discount ${formatRM(off)}`,
     };
@@ -152,7 +153,7 @@ export function priceLine({ unitPrice, qty, offer, discount }) {
         total,
         saved: gross - total,
         freeQty: free,
-        rule: 'freebie',
+        rule: "freebie",
         note: `Buy ${offer.buyQty} free ${offer.freeQty} — ${free} free`,
       };
     }
@@ -160,9 +161,16 @@ export function priceLine({ unitPrice, qty, offer, discount }) {
     const away = group - (qty % group);
     return {
       ...base,
-      rule: 'unit',
+      rule: "unit",
       note: `${away} more for 1 free`,
     };
+  }
+
+  if (type === OFFER_GIFT) {
+    // The trigger product is sold at its normal price. What it earns — the
+    // free items — belongs to the cart, not to this line, so promotions.js
+    // deals with it.
+    return base;
   }
 
   if (type === OFFER_BULK) {
@@ -173,16 +181,16 @@ export function priceLine({ unitPrice, qty, offer, discount }) {
         ...base,
         total,
         saved: gross - total,
-        rule: total < gross ? 'bulk' : 'unit',
+        rule: total < gross ? "bulk" : "unit",
         parts,
         upsell,
         note:
           total < gross
-            ? 'Bulk ' +
+            ? "Bulk " +
               parts
                 .map((p) => (p.times > 1 ? `${p.times}×${p.qty}` : `${p.qty}`))
-                .join(' + ')
-            : '',
+                .join(" + ")
+            : "",
       };
     }
   }
@@ -202,15 +210,15 @@ export function priceCart(lines = []) {
 
 export function formatRM(sen) {
   const n = Math.round(Number(sen) || 0);
-  const sign = n < 0 ? '-' : '';
+  const sign = n < 0 ? "-" : "";
   const a = Math.abs(n);
-  return `${sign}RM${Math.floor(a / 100)}.${String(a % 100).padStart(2, '0')}`;
+  return `${sign}RM${Math.floor(a / 100)}.${String(a % 100).padStart(2, "0")}`;
 }
 
 /** "12.50" | "12.5" | "12" | 12.5 -> 1250 */
 export function toSen(input) {
-  if (input === '' || input == null) return 0;
-  const n = Number(String(input).replace(/[^0-9.\-]/g, ''));
+  if (input === "" || input == null) return 0;
+  const n = Number(String(input).replace(/[^0-9.\-]/g, ""));
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 100);
 }

@@ -6,6 +6,7 @@ import {
   formatRM,
   OFFER_BULK,
   OFFER_FREEBIE,
+  OFFER_GIFT,
   OFFER_NONE,
   priceLine,
   toRMInput,
@@ -114,6 +115,7 @@ export default function Admin({ products }) {
 
       {editing && (
         <ProductForm
+          products={products}
           initial={editing.data}
           isNew={!editing.id}
           onClose={() => setEditing(null)}
@@ -135,6 +137,13 @@ export default function Admin({ products }) {
 }
 
 function describe(offer) {
+  if (offer.type === OFFER_GIFT) {
+    const free = (offer.giftGroups || []).reduce(
+      (s, g) => s + Number(g.qty || 0),
+      0,
+    );
+    return `Buy ${offer.buyQty} free ${free} other`;
+  }
   if (offer.type === OFFER_FREEBIE)
     return `Buy ${offer.buyQty} free ${offer.freeQty}`;
   if (offer.type === OFFER_BULK)
@@ -144,7 +153,14 @@ function describe(offer) {
   return "None";
 }
 
-function ProductForm({ initial, isNew, onSave, onDelete, onClose }) {
+function ProductForm({
+  initial,
+  isNew,
+  products = [],
+  onSave,
+  onDelete,
+  onClose,
+}) {
   const enter = useEnterNav();
   const [f, setF] = useState({
     ...initial,
@@ -181,27 +197,40 @@ function ProductForm({ initial, isNew, onSave, onDelete, onClose }) {
     if (!f.name.trim()) return;
     setBusy(true);
     const offer =
-      f.offer.type === OFFER_BULK
+      f.offer.type === OFFER_GIFT
         ? {
-            type: OFFER_BULK,
-            tiers: f.offer.tiers
-              .map((t) => ({
-                qty: Number(t.qty) || 0,
-                price: toSen(t.priceInput ?? toRMInput(t.price)),
-              }))
-              .filter((t) => t.qty >= 2 && t.price > 0)
-              .sort((a, b) => a.qty - b.qty),
-            buyQty: 0,
+            type: OFFER_GIFT,
+            buyQty: Number(f.offer.buyQty) || 0,
             freeQty: 0,
+            tiers: [],
+            giftGroups: (f.offer.giftGroups || [])
+              .map((g) => ({
+                qty: Number(g.qty) || 0,
+                productIds: (g.productIds || []).filter(Boolean),
+              }))
+              .filter((g) => g.qty > 0 && g.productIds.length),
           }
-        : f.offer.type === OFFER_FREEBIE
+        : f.offer.type === OFFER_BULK
           ? {
-              type: OFFER_FREEBIE,
-              buyQty: Number(f.offer.buyQty) || 0,
-              freeQty: Number(f.offer.freeQty) || 0,
-              tiers: [],
+              type: OFFER_BULK,
+              tiers: f.offer.tiers
+                .map((t) => ({
+                  qty: Number(t.qty) || 0,
+                  price: toSen(t.priceInput ?? toRMInput(t.price)),
+                }))
+                .filter((t) => t.qty >= 2 && t.price > 0)
+                .sort((a, b) => a.qty - b.qty),
+              buyQty: 0,
+              freeQty: 0,
             }
-          : emptyOffer();
+          : f.offer.type === OFFER_FREEBIE
+            ? {
+                type: OFFER_FREEBIE,
+                buyQty: Number(f.offer.buyQty) || 0,
+                freeQty: Number(f.offer.freeQty) || 0,
+                tiers: [],
+              }
+            : emptyOffer();
 
     const tags = String(
       f.tagsInput ??
@@ -322,6 +351,7 @@ function ProductForm({ initial, isNew, onSave, onDelete, onClose }) {
             <option value={OFFER_NONE}>No offer</option>
             <option value={OFFER_FREEBIE}>Buy X, get Y free</option>
             <option value={OFFER_BULK}>Bulk price (n for RM y)</option>
+            <option value={OFFER_GIFT}>Buy X, free Y of OTHER products</option>
           </select>
         </label>
 
@@ -346,6 +376,17 @@ function ProductForm({ initial, isNew, onSave, onDelete, onClose }) {
               />
             </label>
           </div>
+        )}
+
+        {f.offer.type === OFFER_GIFT && (
+          <GiftEditor
+            offer={f.offer}
+            products={products}
+            selfId={initial.id}
+            onChange={(next) =>
+              setF((st) => ({ ...st, offer: { ...st.offer, ...next } }))
+            }
+          />
         )}
 
         {f.offer.type === OFFER_BULK && (
@@ -498,3 +539,107 @@ const SAMPLE = (() => {
     p("Gift box (empty)", "Merch", 6),
   ];
 })();
+
+/**
+ * "Buy 3 shampoo, free 2 conditioner."
+ *
+ * A gift group is a quantity plus the products it may be taken from. Ticking
+ * several products is the useful part: buy 3, take 2 free, and the customer
+ * picks — one Original and one Oat, or two Oat. The till allows exactly two,
+ * in whatever mix they choose.
+ *
+ * Use more than one group when the free items are FIXED rather than chosen:
+ * one group of 1 Calming plus one group of 2 Oat means exactly that, not three
+ * of either.
+ */
+function GiftEditor({ offer, products, selfId, onChange }) {
+  const groups = offer.giftGroups?.length
+    ? offer.giftGroups
+    : [{ qty: 1, productIds: [] }];
+
+  const setGroup = (i, patch) =>
+    onChange({
+      giftGroups: groups.map((g, x) => (x === i ? { ...g, ...patch } : g)),
+    });
+
+  const toggle = (i, id) => {
+    const ids = groups[i].productIds || [];
+    setGroup(i, {
+      productIds: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+    });
+  };
+
+  return (
+    <>
+      <label className="field">
+        <span>Customer must buy how many of THIS product?</span>
+        <input
+          className="mono"
+          inputMode="numeric"
+          value={offer.buyQty || ""}
+          onChange={(e) => onChange({ buyQty: e.target.value })}
+        />
+      </label>
+
+      {groups.map((g, i) => (
+        <div className="giftgroup" key={i}>
+          <div className="giftgroup-head">
+            <label className="field" style={{ margin: 0, width: 110 }}>
+              <span>Free items</span>
+              <input
+                className="mono"
+                inputMode="numeric"
+                value={g.qty || ""}
+                onChange={(e) => setGroup(i, { qty: e.target.value })}
+              />
+            </label>
+            <p className="lede" style={{ margin: 0, flex: 1 }}>
+              Tick every product the customer may choose from. Tick more than
+              one and they pick the flavour; the till still allows only{" "}
+              {g.qty || 0}.
+            </p>
+            {groups.length > 1 && (
+              <button
+                className="linkbtn danger"
+                onClick={() =>
+                  onChange({ giftGroups: groups.filter((_, x) => x !== i) })
+                }>
+                Remove
+              </button>
+            )}
+          </div>
+
+          <div className="giftpick">
+            {products
+              .filter((p) => p.id !== selfId)
+              .map((p) => (
+                <label key={p.id} className="giftopt">
+                  <input
+                    type="checkbox"
+                    checked={(g.productIds || []).includes(p.id)}
+                    onChange={() => toggle(i, p.id)}
+                  />
+                  <span>{p.name}</span>
+                  <em className="mono">{formatRM(p.price)}</em>
+                </label>
+              ))}
+            {products.length <= 1 && (
+              <p className="lede" style={{ margin: 0 }}>
+                Add the free products first, then come back and tick them here.
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <button
+        className="btn"
+        style={{ height: 40, marginBottom: 14 }}
+        onClick={() =>
+          onChange({ giftGroups: [...groups, { qty: 1, productIds: [] }] })
+        }>
+        Add another group of free items
+      </button>
+    </>
+  );
+}

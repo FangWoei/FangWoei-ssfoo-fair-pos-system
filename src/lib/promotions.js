@@ -99,6 +99,55 @@ export const PROMOTIONS = [
 
 import { priceCart } from "./pricing.js";
 
+/**
+ * Turns the "buy X, free Y of other products" offers set in the Products page
+ * into promotion rules.
+ *
+ * A gift group is "this many free, chosen from these products". That choice is
+ * the point: buy 3 shampoo and take 2 free conditioners, and the customer
+ * picks which two — one Original and one Oat, or two Oat. The cashier just
+ * scans what the customer chose, and the till allows exactly two.
+ *
+ * Written this way, the promotion needs no code. Add a product, tick it into a
+ * gift group, done.
+ */
+export function promotionsFromProducts(products = []) {
+  const byId = new Map(products.map((p) => [p.id, p]));
+
+  return products
+    .filter(
+      (p) =>
+        p.offer?.type === "gift" &&
+        Number(p.offer.buyQty) > 0 &&
+        (p.offer.giftGroups || []).some(
+          (g) => g.qty > 0 && g.productIds?.length,
+        ),
+    )
+    .map((p) => ({
+      id: `product-gift-${p.id}`,
+      name: `${p.name} — buy ${p.offer.buyQty}`,
+      short: `Buy ${p.offer.buyQty} free ${(p.offer.giftGroups || []).reduce(
+        (s, g) => s + Number(g.qty || 0),
+        0,
+      )}`,
+      type: "bundle-gift",
+      require: { productIds: [p.id], qty: Number(p.offer.buyQty) },
+      gifts: (p.offer.giftGroups || [])
+        .filter((g) => g.qty > 0 && g.productIds?.length)
+        .map((g) => ({
+          productIds: g.productIds,
+          qty: Number(g.qty),
+          label:
+            g.productIds.length === 1
+              ? byId.get(g.productIds[0])?.name || "free item"
+              : `any ${g.productIds
+                  .map((id) => byId.get(id)?.name)
+                  .filter(Boolean)
+                  .join(" / ")}`,
+        })),
+    }));
+}
+
 /* ────────────────────────────── the engine ────────────────────────────── */
 
 /**
@@ -109,7 +158,9 @@ import { priceCart } from "./pricing.js";
  * count, because sizes may be mixed.
  */
 export function earnedSets(promo, lines) {
-  const pool = lines.filter((l) => !l.discount && hasTag(l, promo.require.tag));
+  const pool = lines.filter(
+    (l) => !l.discount && matchesSelector(l, promo.require),
+  );
   if (!pool.length) return 0;
 
   if (promo.require.sameBy === "flavour") {
@@ -167,7 +218,9 @@ export function checkCanAdd(product, lines, promotions = PROMOTIONS) {
 }
 
 function needMessage(promo, lines) {
-  const pool = lines.filter((l) => !l.discount && hasTag(l, promo.require.tag));
+  const pool = lines.filter(
+    (l) => !l.discount && matchesSelector(l, promo.require),
+  );
   const have = pool.reduce((s, l) => s + l.qty, 0);
 
   if (promo.require.sameBy === "flavour") {
@@ -201,8 +254,24 @@ export function flavourOf(line) {
   return t ? t.slice("flavour:".length) : "";
 }
 
-const matchesGift = (line, gift) =>
-  hasTag(line, gift.tag) && (!gift.flavour || flavourOf(line) === gift.flavour);
+/**
+ * A selector picks products either by tag (the promotions written in this
+ * file) or by an explicit list of ids (the ones built in the Products page).
+ * Ids are how a shopkeeper thinks — "these three bottles" — and tags are how
+ * a rule stays true as the catalogue changes. Both are useful, so both work.
+ */
+function matchesSelector(line, sel) {
+  if (!sel) return false;
+  if (Array.isArray(sel.productIds) && sel.productIds.length) {
+    return sel.productIds.includes(line.productId ?? line.id);
+  }
+  if (!sel.tag) return false;
+  return (
+    hasTag(line, sel.tag) && (!sel.flavour || flavourOf(line) === sel.flavour)
+  );
+}
+
+const matchesGift = (line, gift) => matchesSelector(line, gift);
 
 /**
  * Works out which promotions apply, what they cost, and what is still missing.
@@ -232,7 +301,7 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
 
   /* 3 of the same flavour at a fixed price, plus scanned gifts. */
   function runBundleFixed(promo) {
-    const pool = eligible.filter((l) => hasTag(l, promo.require.tag));
+    const pool = eligible.filter((l) => matchesSelector(l, promo.require));
     if (!pool.length) return;
 
     // Group by flavour, because a mixed three does not qualify.
@@ -295,7 +364,7 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
 
   /* Buy 1 free 1 across a whole range, cheapest goes free. */
   function runMixFree(promo) {
-    const pool = eligible.filter((l) => hasTag(l, promo.require.tag));
+    const pool = eligible.filter((l) => matchesSelector(l, promo.require));
     if (!pool.length) return;
 
     // Expand to units so mixing works, dearest first.
@@ -327,7 +396,7 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
 
   /* Buy N from a range, get a gift that must be scanned. */
   function runBundleGift(promo) {
-    const pool = eligible.filter((l) => hasTag(l, promo.require.tag));
+    const pool = eligible.filter((l) => matchesSelector(l, promo.require));
     const qty = pool.reduce((s, l) => s + l.qty, 0);
     const times = Math.floor(qty / promo.require.qty);
     if (!times) return;

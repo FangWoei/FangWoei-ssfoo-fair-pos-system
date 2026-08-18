@@ -4,6 +4,7 @@ import {
   checkCanAdd,
   earnedSets,
   PROMOTIONS,
+  promotionsFromProducts,
 } from "./promotions.js";
 
 const cases = [];
@@ -262,6 +263,135 @@ check("earnedSets counts per flavour, not in total", () => {
   assert.equal(earnedSets(PROMOTIONS[0], [c600(2), v600(1)]), 0);
   assert.equal(earnedSets(PROMOTIONS[0], [c600(3)]), 1);
   assert.equal(earnedSets(PROMOTIONS[0], [c600(3), v600(3)]), 2);
+});
+
+/* ---------- product-configured gift offers: buy 3 shampoo, free 2 ---------- */
+
+// Set up in the Products page, no code involved.
+const SHAMPOO = {
+  id: "sh1",
+  name: "Shampoo 400ml",
+  price: 2500,
+  offer: {
+    type: "gift",
+    buyQty: 3,
+    giftGroups: [{ qty: 2, productIds: ["c1", "c2"] }],
+  },
+};
+const COND_ORI = {
+  id: "c1",
+  name: "Conditioner Original",
+  price: 1800,
+  offer: { type: "none" },
+};
+const COND_OAT = {
+  id: "c2",
+  name: "Conditioner Oat",
+  price: 1800,
+  offer: { type: "none" },
+};
+const CATALOGUE = [SHAMPOO, COND_ORI, COND_OAT];
+const GIFTP = promotionsFromProducts(CATALOGUE);
+
+const cartLine = (p, qty) => ({
+  key: `x${seq++}`,
+  productId: p.id,
+  name: p.name,
+  unitPrice: p.price,
+  qty,
+  tags: [],
+  discount: null,
+});
+
+check("a gift offer becomes one promotion, with a readable label", () => {
+  assert.equal(GIFTP.length, 1);
+  assert.equal(GIFTP[0].gifts.length, 1);
+  assert.match(GIFTP[0].gifts[0].label, /Original \/ .*Oat/);
+});
+
+check("2 shampoo: the free conditioner is refused", () => {
+  const r = checkCanAdd(
+    { ...COND_OAT, productId: "c2" },
+    [cartLine(SHAMPOO, 2)],
+    GIFTP,
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /1 more/);
+});
+
+check(
+  "3 shampoo: EITHER conditioner unlocks — customer picks the flavour",
+  () => {
+    const cart = [cartLine(SHAMPOO, 3)];
+    assert.equal(
+      checkCanAdd({ ...COND_ORI, productId: "c1" }, cart, GIFTP).ok,
+      true,
+    );
+    assert.equal(
+      checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+      true,
+    );
+  },
+);
+
+check("the 2 free may be mixed: one of each", () => {
+  const cart = [cartLine(SHAMPOO, 3), cartLine(COND_ORI, 1)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    true,
+  );
+});
+
+check("or both the same: two Oat", () => {
+  const cart = [cartLine(SHAMPOO, 3), cartLine(COND_OAT, 1)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    true,
+  );
+});
+
+check("a third free item is refused however they are mixed", () => {
+  const cart = [
+    cartLine(SHAMPOO, 3),
+    cartLine(COND_ORI, 1),
+    cartLine(COND_OAT, 1),
+  ];
+  assert.equal(
+    checkCanAdd({ ...COND_ORI, productId: "c1" }, cart, GIFTP).ok,
+    false,
+  );
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    false,
+  );
+});
+
+check("shampoo charged, both conditioners free", () => {
+  const lines = [
+    cartLine(SHAMPOO, 3),
+    cartLine(COND_ORI, 1),
+    cartLine(COND_OAT, 1),
+  ];
+  const r = applyPromotions(lines, GIFTP);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+  assert.equal(total(lines, r), 3 * 2500);
+});
+
+check("6 shampoo earns 4 free", () => {
+  const cart = [cartLine(SHAMPOO, 6), cartLine(COND_OAT, 3)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart, GIFTP).ok,
+    true,
+  );
+  const cart4 = [cartLine(SHAMPOO, 6), cartLine(COND_OAT, 4)];
+  assert.equal(
+    checkCanAdd({ ...COND_OAT, productId: "c2" }, cart4, GIFTP).ok,
+    false,
+  );
+});
+
+check("a product with no gift offer produces no promotion", () => {
+  assert.equal(promotionsFromProducts([COND_ORI, COND_OAT]).length, 0);
 });
 
 let failed = 0;

@@ -10,7 +10,12 @@ import {
   looksLikePaymentToken,
 } from "../lib/payments";
 import { OFFER_NONE, formatRM, priceLine, toSen } from "../lib/pricing";
-import { checkCanAdd, priceCartWithPromotions } from "../lib/promotions";
+import {
+  PROMOTIONS,
+  checkCanAdd,
+  priceCartWithPromotions,
+  promotionsFromProducts,
+} from "../lib/promotions";
 import { useEnterNav } from "../lib/useEnterNav";
 
 export default function Sell({ products, till, me }) {
@@ -25,6 +30,14 @@ export default function Sell({ products, till, me }) {
 
   const active = useMemo(
     () => products.filter((p) => p.active !== false),
+    [products],
+  );
+
+  /* The promotions written in promotions.js, plus every "buy X free Y of other
+     products" offer set up in the Products page. Rebuilt whenever the
+     catalogue changes, so an edit takes effect on both tills at once. */
+  const promos = useMemo(
+    () => [...PROMOTIONS, ...promotionsFromProducts(products)],
     [products],
   );
   const cats = useMemo(
@@ -46,7 +59,7 @@ export default function Sell({ products, till, me }) {
     });
   }, [active, cat, term]);
 
-  const cart = priceCartWithPromotions(lines);
+  const cart = priceCartWithPromotions(lines, promos);
   const blocked = cart.blockers.length > 0;
 
   /* Keep the scanner input focused whenever nothing else is. A barcode gun is
@@ -62,7 +75,7 @@ export default function Sell({ products, till, me }) {
     /* Gift barcodes are refused until the cart has earned them. Catching it
        here — at the scan — matters: telling the cashier at the payment screen
        means the free bottle is already in the customer's bag. */
-    const gate = checkCanAdd(product, lines);
+    const gate = checkCanAdd(product, lines, promos);
     if (!gate.ok) {
       notify(gate.reason, "warn");
       setTerm("");
