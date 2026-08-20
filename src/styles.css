@@ -1468,9 +1468,18 @@ textarea {
 .printarea h1 {
   font-size: 14px;
   text-align: center;
-  margin: 0 0 2px;
-  letter-spacing: 0.06em;
+  margin: 0 0 3px;
+  letter-spacing: 0.04em;
   font-weight: 700;
+}
+/* The company sits between the fair name and the address: clearly the trading
+   entity, without competing with the name people actually recognise. */
+.printarea .company {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.01em;
+  margin-bottom: 2px;
 }
 .printarea .c {
   text-align: center;

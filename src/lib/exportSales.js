@@ -255,6 +255,8 @@ function masthead(ws, scopeLabel, sheetName, width) {
     merges.push({ s: { r: r - 1, c: 0 }, e: { r: r - 1, c: width - 1 } });
   r = put(ws, r, [[SHOP.name, S.title]]);
   span();
+  r = put(ws, r, [[SHOP.company || "", S.sub]]);
+  span();
   r = put(ws, r, [[(SHOP.lines || []).join("  ·  "), S.sub]]);
   span();
   r = put(ws, r, [
@@ -684,7 +686,11 @@ export function exportPdf(sales, scopeLabel) {
     .setFont("helvetica", "normal")
     .setFontSize(8.5)
     .setTextColor(190, 195, 210);
-  doc.text((SHOP.lines || []).join("   ·   "), M, 22);
+  doc.text(
+    [SHOP.company, ...(SHOP.lines || [])].filter(Boolean).join("   ·   "),
+    M,
+    22,
+  );
   doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(255);
   doc.text(`SALES REPORT — ${scopeLabel.toUpperCase()}`, W - M, 15, {
     align: "right",
