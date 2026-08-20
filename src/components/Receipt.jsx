@@ -3,15 +3,22 @@ import { METHODS } from "../lib/db";
 import { formatRM } from "../lib/pricing";
 
 /** Printed at the top of every receipt. Edit for your stall.
-    Keep each address line short — anything wider than the paper wraps and
-    costs you a line, so break the address yourself rather than letting it
-    fall where it likes. */
+ *
+ *  Three sizes, largest first: the fair, then the company, then the address.
+ *  A customer glancing at a receipt in their bag wants to know where they
+ *  bought it; the registration number and address are there for the paperwork
+ *  and can be smaller.
+ *
+ *  Keep each address line short. Anything wider than the paper wraps and costs
+ *  you a line, so break it yourself rather than letting it fall where it likes.
+ */
 export const SHOP = {
-  name: "BZU-BZU FAIR",
+  name: "BZU BZU TLM BABY EXPO",
+  company: "SS FOO SDN BHD (785660W)",
   lines: [
-    "SS FOO SDN BHD",
-    "7, Lorong 41, Taman Ria,",
-    "34700 Taiping, Perak.",
+    "7, LORONG 41, TAMAN RIA,",
+    "34700, TAIPING, PERAK.",
+    "TEL: 017-4446981",
   ],
   footer: "Thank you — come again",
 };
