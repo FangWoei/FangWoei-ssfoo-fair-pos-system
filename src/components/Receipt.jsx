@@ -49,6 +49,7 @@ export default function Receipt({ sale }) {
     <div className="printarea">
       {/* ---- the stall ---- */}
       <h1>{SHOP.name}</h1>
+      <div className="company">{SHOP.company}</div>
       {SHOP.lines.map((l) => (
         <div className="c" key={l}>
           {l}
