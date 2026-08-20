@@ -26,6 +26,10 @@ export const TILLS = {
     methods: ["cash", "qr"],
     hasDrawer: true,
     printsReceipts: true,
+    // Its own DuitNow standee, so a payment alert can be traced to this till.
+    // File goes in /public. See public/PUT-YOUR-DUITNOW-QR-HERE.txt.
+    qrImage: "/duitnow-qr-windows.png",
+    qrLabel: "Windows QR",
   },
   macbook: {
     id: "macbook",
@@ -36,10 +40,12 @@ export const TILLS = {
     // till for exactly that reason.
     methods: ["cash", "qr", "card"],
     hasDrawer: false,
-    // No thermal printer on this machine. Left true, every sale would open a
-    // print dialog the cashier has to dismiss, which is the last thing you
-    // want mid-queue. Set true if you connect a printer to it.
-    printsReceipts: false,
+    // Prints too — over the network to the same thermal printer, or through
+    // whatever printer this machine has. Set false only if it has none, or
+    // every sale opens a print dialog the cashier has to dismiss.
+    printsReceipts: true,
+    qrImage: "/duitnow-qr-macbook.png",
+    qrLabel: "MacBook QR",
   },
 };
 

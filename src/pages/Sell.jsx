@@ -374,6 +374,7 @@ export default function Sell({ products, till, me }) {
         <ConfirmModal
           method={paying}
           due={cart.total}
+          till={till}
           onCancel={() => setPaying(null)}
           onDone={(ref) => finish(paying, { ref })}
         />
@@ -535,7 +536,7 @@ function CashModal({ due, onCancel, onDone }) {
  * so the button names the thing they must be looking at. "Customer's phone
  * shows PAID" is much harder to press on autopilot than "Confirm".
  */
-function ConfirmModal({ method, due, onCancel, onDone }) {
+function ConfirmModal({ method, due, till, onCancel, onDone }) {
   const enter = useEnterNav();
   const cfg = PAYMENT_CHECKS[method];
   const [ref, setRef] = useState("");
@@ -555,8 +556,15 @@ function ConfirmModal({ method, due, onCancel, onDone }) {
 
       {method === "qr" && (
         <div className="qrbox">
-          <img src="/duitnow-qr.png" alt="DuitNow QR code" />
-          <p>Or point the standee at the customer</p>
+          <img
+            src={till?.qrImage || "/duitnow-qr.png"}
+            alt={`DuitNow QR code — ${till?.qrLabel || "stall"}`}
+          />
+          <p>
+            <b>{till?.qrLabel || "DuitNow QR"}</b> — use this till's own
+            standee. Paying against the other one puts the alert on the wrong
+            till.
+          </p>
         </div>
       )}
 

@@ -238,6 +238,57 @@ export function earnedSets(promo, lines) {
 }
 
 /**
+ * What the cart is owed, in free items, across EVERY promotion at once.
+ *
+ * Gifts must be counted globally, not promotion by promotion. Two promotions
+ * that give away the same 200ml bottle used to be tallied separately: the
+ * first claimed the bottles, the second saw none left and demanded more, and
+ * the scan gate — which knew they were already claimed — refused to supply
+ * them. Payment could never complete and there was no way out of it.
+ *
+ * Counting once, against the total entitlement, means the gate and the
+ * blockers can never disagree.
+ *
+ * Gifts are grouped by WHAT they match, so "1 free Calming 200ml" from one
+ * promotion and "1 free Calming 200ml" from another add up to two.
+ */
+export function giftLedger(lines, promotions = PROMOTIONS) {
+  const eligible = lines.filter((l) => !l.discount && Number(l.qty) > 0);
+  const bySig = new Map();
+
+  for (const promo of promotions) {
+    const sets = earnedSets(promo, eligible);
+    if (!sets) continue;
+
+    for (const gift of promo.gifts || []) {
+      const sig = JSON.stringify([
+        gift.tag || "",
+        gift.flavour || "",
+        [...(gift.productIds || [])].sort(),
+      ]);
+      const entry = bySig.get(sig) || {
+        sig,
+        gift,
+        promos: [],
+        allowed: 0,
+        have: 0,
+        lines: [],
+      };
+      entry.allowed += sets * gift.qty;
+      if (!entry.promos.includes(promo.name)) entry.promos.push(promo.name);
+      bySig.set(sig, entry);
+    }
+  }
+
+  for (const entry of bySig.values()) {
+    entry.lines = eligible.filter((l) => matchesGift(l, entry.gift));
+    entry.have = entry.lines.reduce((s, l) => s + l.qty, 0);
+  }
+
+  return [...bySig.values()];
+}
+
+/**
  * Can this product be scanned into the cart right now?
  *
  * Gift barcodes are refused until the cart has earned them. A cashier scanning
@@ -252,55 +303,50 @@ export function earnedSets(promo, lines) {
  * @returns {{ ok: boolean, reason?: string }}
  */
 export function checkCanAdd(product, lines, promotions = PROMOTIONS) {
-  /* A bottle can be the gift of several promotions at once — three different
-     600ml lines might each give away the same 200ml. So gather EVERY claim on
-     this product before deciding. Stopping at the first match is how you end
-     up telling a cashier to scan three more of something they already have
-     three of, because a different promotion was the one that earned it. */
-  const claims = [];
-
+  /* A promotion must never block the product that EARNS it. Scanning the
+     third bottle is how the free ones get unlocked in the first place. */
   for (const promo of promotions) {
-    // Never block the product that earns the promotion.
     if (matchesSelector(product, promo.require)) return { ok: true };
-
-    for (const gift of promo.gifts || []) {
-      if (!matchesGift(product, gift)) continue;
-      claims.push({
-        promo,
-        gift,
-        allowed: earnedSets(promo, lines) * gift.qty,
-        already: lines
-          .filter((l) => matchesGift(l, gift))
-          .reduce((s, l) => s + l.qty, 0),
-      });
-    }
   }
 
-  if (!claims.length) return { ok: true };
+  // Which gift entitlements does this product answer to?
+  const ledger = giftLedger(lines, promotions).filter((e) =>
+    matchesGift(product, e.gift),
+  );
 
-  // Free if ANY promotion still owes one.
-  if (claims.some((c) => c.already < c.allowed)) return { ok: true };
+  // Not a gift of anything currently in play — check whether it is a gift at
+  // all, so an unearned one can still be explained rather than sold silently.
+  if (!ledger.length) {
+    const potential = [];
+    for (const promo of promotions) {
+      for (const gift of promo.gifts || []) {
+        if (matchesGift(product, gift)) potential.push(promo);
+      }
+    }
+    if (!potential.length) return { ok: true };
 
-  /* Nothing owes it. Report against the promotion that came closest, so the
-     advice is about the deal actually in progress rather than an unrelated
-     one that happens to be listed first. */
-  const progress = (promo) =>
-    lines
-      .filter((l) => !l.discount && matchesSelector(l, promo.require))
-      .reduce((s, l) => s + l.qty, 0);
+    const closest = potential.reduce((a, b) =>
+      progressOf(b, lines) > progressOf(a, lines) ? b : a,
+    );
+    const why = needMessage(closest, lines);
+    return product.giftOnly
+      ? { ok: false, reason: why }
+      : { ok: true, charged: true, note: `Charged at normal price — ${why}` };
+  }
 
-  const best =
-    claims.find((c) => c.allowed > 0) ||
-    claims.reduce((a, b) => (progress(b.promo) > progress(a.promo) ? b : a));
+  if (ledger.some((e) => e.have < e.allowed)) return { ok: true };
 
-  const exhausted = best.allowed > 0;
-  const why = exhausted
-    ? `All ${best.allowed} free × ${best.gift.label} already scanned for ${best.promo.name}`
-    : needMessage(best.promo, lines);
+  const e = ledger[0];
+  const why = `All ${e.allowed} free × ${e.gift.label} already scanned for ${e.promos.join(" + ")}`;
+  return product.giftOnly
+    ? { ok: false, reason: why }
+    : { ok: true, charged: true, note: `Charged at normal price — ${why}` };
+}
 
-  if (product.giftOnly) return { ok: false, reason: why };
-
-  return { ok: true, charged: true, note: `Charged at normal price — ${why}` };
+function progressOf(promo, lines) {
+  return lines
+    .filter((l) => !l.discount && matchesSelector(l, promo.require))
+    .reduce((s, l) => s + l.qty, 0);
 }
 
 function needMessage(promo, lines) {
@@ -393,6 +439,47 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     else if (promo.type === "bundle-gift") runBundleGift(promo);
   }
 
+  /* Gifts are settled once, against the combined entitlement of every
+     promotion — see giftLedger. Doing it per promotion double-counts the
+     savings and can deadlock the sale. */
+  for (const entry of giftLedger(lines, promotions)) {
+    let free = Math.min(entry.allowed, entry.have);
+    let saving = 0;
+
+    for (const l of entry.lines) {
+      const take = Math.min(l.qty, free);
+      free -= take;
+      const charged = l.unitPrice * (l.qty - take);
+      linePrices[l.key] = charged;
+      if (take > 0) {
+        saving += l.unitPrice * take;
+        lineNotes[l.key] =
+          take < l.qty
+            ? `${take} of ${l.qty} free`
+            : `Free — ${entry.promos[0]}`;
+      }
+    }
+
+    if (entry.have < entry.allowed) {
+      const short = entry.allowed - entry.have;
+      blockers.push({
+        promo: entry.promos.join(" + "),
+        need: short,
+        label: entry.gift.label,
+        message: `Scan ${short} more × ${entry.gift.label} — free with ${entry.promos.join(" + ")}`,
+      });
+    }
+
+    if (saving > 0) {
+      applied.push({
+        id: `gift-${entry.sig}`,
+        name: `Free ${entry.gift.label}`,
+        times: Math.min(entry.allowed, entry.have),
+        saving,
+      });
+    }
+  }
+
   /* N at a fixed price, plus any scanned gifts.
      Mixing is allowed unless `sameBy` says otherwise. */
   function runBundleFixed(promo) {
@@ -470,7 +557,7 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     }
 
     if (!times) return;
-    claimGifts(promo, times, saving);
+    applied.push({ id: promo.id, name: promo.name, times, saving });
   }
 
   /* Buy 1 free 1 across a whole range, cheapest goes free. */
@@ -513,54 +600,6 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     if (!times) return;
 
     for (const l of pool) lineNotes[l.key] ||= promo.short;
-    claimGifts(promo, times, 0);
-  }
-
-  /**
-   * Zero-rates the gift lines, and complains if they are not in the cart.
-   * Extra gifts beyond the entitlement stay at full price — that is a normal
-   * sale of the same product, not a mistake.
-   */
-  function claimGifts(promo, times, saving) {
-    let giftSaving = saving;
-
-    for (const gift of promo.gifts || []) {
-      const need = gift.qty * times;
-      const matches = eligible.filter((l) => matchesGift(l, gift));
-      const have = matches.reduce(
-        (s, l) => s + Math.max(0, l.qty - (claimed[l.key] || 0)),
-        0,
-      );
-
-      if (have < need) {
-        blockers.push({
-          promo: promo.name,
-          need: need - have,
-          label: gift.label || gift.tag,
-          message: `${promo.name}: scan ${need - have} more × ${gift.label || gift.tag}`,
-        });
-        continue;
-      }
-
-      // Charge for anything above the free entitlement, and never give the
-      // same unit away twice across two promotions.
-      let free = need;
-      for (const l of matches) {
-        const spare = l.qty - (claimed[l.key] || 0);
-        if (spare <= 0) continue;
-        const take = Math.min(spare, free);
-        if (take <= 0) continue;
-        free -= take;
-        claimed[l.key] = (claimed[l.key] || 0) + take;
-        linePrices[l.key] = l.unitPrice * (l.qty - claimed[l.key]);
-        lineNotes[l.key] = `Free with ${promo.short}${
-          claimed[l.key] < l.qty ? ` (${claimed[l.key]} of ${l.qty})` : ""
-        }`;
-        giftSaving += l.unitPrice * take;
-      }
-    }
-
-    applied.push({ id: promo.id, name: promo.name, times, saving: giftSaving });
   }
 
   return { applied, blockers, lineNotes, linePrices };

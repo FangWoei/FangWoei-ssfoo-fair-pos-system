@@ -478,7 +478,11 @@ textarea {
 
 .lines {
   flex: 1;
-  min-height: 120px; /* never collapses to nothing when totals grow */
+  /* Small enough that the tape can always fit its totals and payment buttons.
+     A larger floor looks better on a short sale but overflows once several
+     promotion lines appear, and the overflow lands ON TOP of the last item —
+     which is what the totals block was doing. */
+  min-height: 56px;
   overflow-y: auto;
   overscroll-behavior: contain; /* stops the page bouncing at either end */
   scroll-behavior: smooth;
@@ -644,13 +648,25 @@ textarea {
   flex: 0 0 auto;
   padding: 11px 18px 15px;
   border-top: 1px dashed var(--paper-rule);
+  background: var(--paper); /* never let a line show through from behind */
+  position: relative;
+  z-index: 2;
 }
 .trow {
   display: flex;
   justify-content: space-between;
+  gap: 10px;
   font-size: 13px;
   color: var(--paper-soft);
   padding: 2px 0;
+}
+/* A promotion name can be long. Let it wrap rather than run under the amount. */
+.trow > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.trow > span:last-child {
+  white-space: nowrap;
 }
 .trow.save {
   color: var(--green);
@@ -745,6 +761,9 @@ textarea {
   display: grid;
   gap: 8px;
   padding: 0 18px 18px;
+  background: var(--paper);
+  position: relative;
+  z-index: 2;
 }
 .paybtn {
   height: 60px;

@@ -50,13 +50,11 @@ export default function Report() {
 
       // Both tills take cash now, so each has its own float to count.
       const t = sale.till || "unknown";
-      byTill[t] = byTill[t] || { total: 0, count: 0, cash: 0, cashCount: 0 };
+      byTill[t] = byTill[t] || { total: 0, count: 0, cash: 0, qr: 0, card: 0 };
       byTill[t].total += sale.total || 0;
       byTill[t].count++;
-      if (sale.method === "cash") {
-        byTill[t].cash += sale.total || 0;
-        byTill[t].cashCount++;
-      }
+      byTill[t][sale.method] =
+        (byTill[t][sale.method] || 0) + (sale.total || 0);
       if (sale.method !== "cash" && sale.verified === false) unverified++;
       for (const it of sale.items || []) {
         const e = (byProduct[it.name] ||= { qty: 0, total: 0 });
@@ -171,13 +169,17 @@ export default function Report() {
 
       {Object.keys(s.byTill).length > 0 && (
         <>
-          <h2 className="section-title">Cash to count, by till</h2>
+          <h2 className="section-title">
+            By till — what to reconcile against what
+          </h2>
           <table className="table" style={{ marginBottom: 22 }}>
             <thead>
               <tr>
                 <th>Till</th>
                 <th>Sales</th>
-                <th style={{ textAlign: "right" }}>Cash taken</th>
+                <th style={{ textAlign: "right" }}>Cash box</th>
+                <th style={{ textAlign: "right" }}>DuitNow QR</th>
+                <th style={{ textAlign: "right" }}>Card</th>
                 <th style={{ textAlign: "right" }}>All methods</th>
               </tr>
             </thead>
@@ -186,8 +188,13 @@ export default function Report() {
                 <tr key={till}>
                   <td>
                     {TILLS[till]?.name || till}
-                    {TILLS[till]?.hasDrawer === false && v.cash > 0 && (
+                    {TILLS[till]?.qrLabel && v.qr > 0 && (
                       <span className="tag" style={{ marginLeft: 8 }}>
+                        {TILLS[till].qrLabel}
+                      </span>
+                    )}
+                    {TILLS[till]?.hasDrawer === false && v.cash > 0 && (
+                      <span className="tag" style={{ marginLeft: 6 }}>
                         cash box, no drawer
                       </span>
                     )}
@@ -197,6 +204,12 @@ export default function Report() {
                     className="mono"
                     style={{ textAlign: "right", fontWeight: 700 }}>
                     {v.cash > 0 ? formatRM(v.cash) : "—"}
+                  </td>
+                  <td className="mono" style={{ textAlign: "right" }}>
+                    {v.qr > 0 ? formatRM(v.qr) : "—"}
+                  </td>
+                  <td className="mono" style={{ textAlign: "right" }}>
+                    {v.card > 0 ? formatRM(v.card) : "—"}
                   </td>
                   <td className="mono" style={{ textAlign: "right" }}>
                     {formatRM(v.total)}
@@ -211,13 +224,13 @@ export default function Report() {
       <div className="reconcile">
         <strong>Closing check</strong>
         <span>
-          Count each till's cash box against its own figure above, not against
-          the combined total — a shortfall you cannot place on one machine is
-          much harder to explain. Then match the DuitNow figure against your
-          Public Bank merchant records, and the card figure against the
-          terminal's batch report, counting sales as well as amounts. A count
-          that matches but a total that does not usually means one sale went
-          through at the wrong amount.
+          Each till has its own cash box and its own DuitNow standee, so every
+          row above reconciles on its own. Count each cash box against its own
+          figure, and match each till's QR total against the alerts for that
+          standee — a shortfall you cannot place on one machine is much harder
+          to explain. Card goes against the terminal's batch report. Compare
+          counts as well as amounts: a count that matches while the total does
+          not usually means one sale went through at the wrong amount.
         </span>
         {s.unverified > 0 && (
           <span className="warn">

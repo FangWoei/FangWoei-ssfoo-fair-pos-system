@@ -3,6 +3,7 @@ import {
   applyPromotions,
   checkCanAdd,
   earnedSets,
+  giftLedger,
   PROMOTIONS,
   promotionsFromProducts,
 } from "./promotions.js";
@@ -59,15 +60,15 @@ check("gifts missing entirely -> payment blocked, both gifts named", () => {
   const lines = [c600(3)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 2);
-  assert.match(r.blockers[0].message, /scan 1 more/);
-  assert.match(r.blockers[1].message, /scan 2 more/);
+  assert.match(r.blockers[0].message, /Scan 1 more/);
+  assert.match(r.blockers[1].message, /Scan 2 more/);
 });
 
 check("one gift short -> blocked, and it says how many more", () => {
   const lines = [c600(3), calm200(1), oat200(1)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 1);
-  assert.match(r.blockers[0].message, /scan 1 more/);
+  assert.match(r.blockers[0].message, /Scan 1 more/);
 });
 
 check("only 2 bottles -> no promo, full price, no blocker", () => {
@@ -208,8 +209,9 @@ check("a deal that costs the customer MORE is not applied", () => {
     r.applied.some((a) => a.id === "diaper-4-160"),
     false,
   );
+  // the trial box is still earned; it is settled by the gift ledger
   assert.equal(
-    r.applied.some((a) => a.id === "diaper-trial"),
+    r.blockers.some((b) => /trial/i.test(b.label)),
     true,
   );
 });
@@ -232,7 +234,7 @@ check("8 packs -> two trial boxes required", () => {
   const lines = [dia("M", 8), trial(1)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 1);
-  assert.match(r.blockers[0].message, /scan 1 more/);
+  assert.match(r.blockers[0].message, /Scan 1 more/);
 });
 
 /* ---------- interaction with manual discounts ---------- */
@@ -787,6 +789,108 @@ check("setting the same group on every size still gives ONE promotion", () => {
     1,
     "duplicates must collapse, or four nappies give eight boxes",
   );
+});
+
+/* ---------- two shampoo promotions in ONE sale ---------- */
+/* Buy 3 Original -> 1 Calming 200ml + 2 Oat 200ml.
+   Buy 3 Oat      -> the same again. Both in the same basket. */
+
+const SH_ORI = {
+  id: "so",
+  name: "HTT600 Original",
+  price: 2690,
+  giftOffer: {
+    buyQty: 3,
+    giftGroups: [
+      { qty: 1, productIds: ["g_cal"] },
+      { qty: 2, productIds: ["g_oat"] },
+    ],
+  },
+};
+const SH_OAT = {
+  id: "sa",
+  name: "HTT600 Oat",
+  price: 2690,
+  giftOffer: {
+    buyQty: 3,
+    giftGroups: [
+      { qty: 1, productIds: ["g_cal"] },
+      { qty: 2, productIds: ["g_oat"] },
+    ],
+  },
+};
+const G_CAL = {
+  id: "g_cal",
+  name: "HTT200 Calming",
+  price: 1350,
+  giftOnly: true,
+};
+const G_OAT = { id: "g_oat", name: "HTT200 Oat", price: 1350, giftOnly: true };
+const SHP = promotionsFromProducts([SH_ORI, SH_OAT, G_CAL, G_OAT]);
+const asP = (p) => ({ ...p, productId: p.id });
+
+check("two separate 600ml promotions each earn their own gifts", () => {
+  assert.equal(SHP.length, 2);
+});
+
+check("3 Original then 3 Oat: entitlement DOUBLES to 2 Calming + 4 Oat", () => {
+  const cart = [cartLine(SH_ORI, 3), cartLine(SH_OAT, 3)];
+  const led = giftLedger(cart, SHP);
+  const cal = led.find((e) => e.gift.productIds.includes("g_cal"));
+  const oat = led.find((e) => e.gift.productIds.includes("g_oat"));
+  assert.equal(cal.allowed, 2);
+  assert.equal(oat.allowed, 4);
+});
+
+check(
+  "the second promotion CAN still claim its gifts — the old deadlock",
+  () => {
+    // First promotion's gifts already scanned in full.
+    const cart = [cartLine(SH_ORI, 3), cartLine(G_CAL, 1), cartLine(G_OAT, 2)];
+    // Customer now buys 3 Oat as well.
+    cart.push(cartLine(SH_OAT, 3));
+    // Both gift barcodes must open up again.
+    assert.equal(checkCanAdd(asP(G_CAL), cart, SHP).ok, true);
+    assert.equal(checkCanAdd(asP(G_OAT), cart, SHP).ok, true);
+  },
+);
+
+check("all six free bottles ring at zero, and nothing blocks payment", () => {
+  const lines = [
+    cartLine(SH_ORI, 3),
+    cartLine(SH_OAT, 3),
+    cartLine(G_CAL, 2),
+    cartLine(G_OAT, 4),
+  ];
+  const r = applyPromotions(lines, SHP);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+  assert.equal(r.linePrices[lines[2].key], 0);
+  assert.equal(r.linePrices[lines[3].key], 0);
+  assert.equal(total(lines, r), 6 * 2690);
+});
+
+check("a seventh free bottle is still refused", () => {
+  const cart = [
+    cartLine(SH_ORI, 3),
+    cartLine(SH_OAT, 3),
+    cartLine(G_CAL, 2),
+    cartLine(G_OAT, 4),
+  ];
+  assert.equal(checkCanAdd(asP(G_OAT), cart, SHP).ok, false);
+});
+
+check("gifts are counted once, not once per promotion", () => {
+  const lines = [
+    cartLine(SH_ORI, 3),
+    cartLine(SH_OAT, 3),
+    cartLine(G_CAL, 2),
+    cartLine(G_OAT, 4),
+  ];
+  const r = applyPromotions(lines, SHP);
+  const giftSaving = r.applied
+    .filter((a) => a.id.startsWith("gift-"))
+    .reduce((sum, a) => sum + a.saving, 0);
+  assert.equal(giftSaving, 2 * 1350 + 4 * 1350);
 });
 
 let failed = 0;

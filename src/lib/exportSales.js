@@ -72,10 +72,10 @@ export function summarise(sales) {
     countByMethod[s.method] = (countByMethod[s.method] || 0) + 1;
 
     const t = s.till || "unknown";
-    byTill[t] = byTill[t] || { count: 0, total: 0, cash: 0 };
+    byTill[t] = byTill[t] || { count: 0, total: 0, cash: 0, qr: 0, card: 0 };
     byTill[t].count++;
     byTill[t].total += s.total || 0;
-    if (s.method === "cash") byTill[t].cash += s.total || 0;
+    byTill[t][s.method] = (byTill[t][s.method] || 0) + (s.total || 0);
 
     const c = s.cashierName || "—";
     byCashier[c] = byCashier[c] || { count: 0, total: 0 };
@@ -340,20 +340,20 @@ export function exportExcel(sales, scopeLabel) {
     ]);
     r++;
 
-    r = band(ws, r, "BY TILL — count each cash box on its own", W, merges);
+    r = band(ws, r, "BY TILL — each row reconciles on its own", W, merges);
     r = put(ws, r, [
       ["Till", S.head(AMBER)],
-      ["Sales", S.head(AMBER)],
-      ["Cash to count", S.head(AMBER)],
-      ["All methods", S.head(AMBER)],
+      ["Cash box", S.head(AMBER)],
+      ["DuitNow QR", S.head(AMBER)],
+      ["Card", S.head(AMBER)],
     ]);
     Object.entries(s.byTill).forEach(([t, v], i) => {
       const z = i % 2 === 1;
       r = put(ws, r, [
         [TILLS[t]?.name || t, z ? S.z : S.cell],
-        [v.count, z ? S.zNum : S.num],
         [rm(v.cash), z ? S.zMoney : S.money],
-        [rm(v.total), z ? S.zMoney : S.money],
+        [rm(v.qr), z ? S.zMoney : S.money],
+        [rm(v.card), z ? S.zMoney : S.money],
       ]);
     });
     r++;
@@ -782,8 +782,11 @@ export function exportPdf(sales, scopeLabel) {
   });
 
   table({
-    startY: section("Cash to count, by till", doc.lastAutoTable.finalY + 9),
-    head: [["Till", "Sales", "Cash to count", "All methods"]],
+    startY: section(
+      "By till — each row reconciles on its own",
+      doc.lastAutoTable.finalY + 9,
+    ),
+    head: [["Till", "Sales", "Cash box", "DuitNow QR", "Card", "All methods"]],
     headStyles: {
       fillColor: C.amber,
       textColor: 255,
@@ -794,12 +797,16 @@ export function exportPdf(sales, scopeLabel) {
       TILLS[t]?.name || t,
       v.count,
       v.cash ? money(v.cash) : "—",
+      v.qr ? money(v.qr) : "—",
+      v.card ? money(v.card) : "—",
       money(v.total),
     ]),
     columnStyles: {
-      1: { halign: "right", cellWidth: 20 },
-      2: { halign: "right", cellWidth: 32, fontStyle: "bold" },
-      3: { halign: "right", cellWidth: 32 },
+      1: { halign: "right", cellWidth: 16 },
+      2: { halign: "right", cellWidth: 26, fontStyle: "bold" },
+      3: { halign: "right", cellWidth: 26 },
+      4: { halign: "right", cellWidth: 24 },
+      5: { halign: "right", cellWidth: 28 },
     },
   });
   doc
@@ -807,7 +814,7 @@ export function exportPdf(sales, scopeLabel) {
     .setFontSize(7.5)
     .setTextColor(...C.dim);
   doc.text(
-    "Count each till against its own figure. A shortfall you cannot place on one machine is far harder to explain.",
+    "Each till has its own cash box and its own DuitNow standee, so every row reconciles on its own.",
     M,
     doc.lastAutoTable.finalY + 4.5,
   );
