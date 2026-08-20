@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Receipt from "../components/Receipt";
-import { METHODS, watchSalesSince } from "../lib/db";
+import { METHODS, TILLS, watchSalesSince } from "../lib/db";
 import { exportExcel, exportPdf } from "../lib/exportSales";
 import { formatRM } from "../lib/pricing";
 
@@ -37,6 +37,7 @@ export default function Report() {
   const s = useMemo(() => {
     const byMethod = {};
     const countByMethod = {};
+    const byTill = {};
     const byProduct = {};
     let total = 0;
     let saved = 0;
@@ -46,6 +47,16 @@ export default function Report() {
       saved += sale.saved || 0;
       byMethod[sale.method] = (byMethod[sale.method] || 0) + (sale.total || 0);
       countByMethod[sale.method] = (countByMethod[sale.method] || 0) + 1;
+
+      // Both tills take cash now, so each has its own float to count.
+      const t = sale.till || "unknown";
+      byTill[t] = byTill[t] || { total: 0, count: 0, cash: 0, cashCount: 0 };
+      byTill[t].total += sale.total || 0;
+      byTill[t].count++;
+      if (sale.method === "cash") {
+        byTill[t].cash += sale.total || 0;
+        byTill[t].cashCount++;
+      }
       if (sale.method !== "cash" && sale.verified === false) unverified++;
       for (const it of sale.items || []) {
         const e = (byProduct[it.name] ||= { qty: 0, total: 0 });
@@ -58,6 +69,7 @@ export default function Report() {
       saved,
       byMethod,
       countByMethod,
+      byTill,
       unverified,
       top: Object.entries(byProduct)
         .sort((a, b) => b[1].total - a[1].total)
@@ -157,13 +169,55 @@ export default function Report() {
         )}
       </div>
 
+      {Object.keys(s.byTill).length > 0 && (
+        <>
+          <h2 className="section-title">Cash to count, by till</h2>
+          <table className="table" style={{ marginBottom: 22 }}>
+            <thead>
+              <tr>
+                <th>Till</th>
+                <th>Sales</th>
+                <th style={{ textAlign: "right" }}>Cash taken</th>
+                <th style={{ textAlign: "right" }}>All methods</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(s.byTill).map(([till, v]) => (
+                <tr key={till}>
+                  <td>
+                    {TILLS[till]?.name || till}
+                    {TILLS[till]?.hasDrawer === false && v.cash > 0 && (
+                      <span className="tag" style={{ marginLeft: 8 }}>
+                        cash box, no drawer
+                      </span>
+                    )}
+                  </td>
+                  <td className="mono">{v.count}</td>
+                  <td
+                    className="mono"
+                    style={{ textAlign: "right", fontWeight: 700 }}>
+                    {v.cash > 0 ? formatRM(v.cash) : "—"}
+                  </td>
+                  <td className="mono" style={{ textAlign: "right" }}>
+                    {formatRM(v.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
       <div className="reconcile">
         <strong>Closing check</strong>
         <span>
-          Match the DuitNow figure against your Public Bank merchant records,
-          and the card figure against the terminal's batch report — count of
-          sales as well as the amount. A count that matches but a total that
-          does not usually means one sale went through at the wrong amount.
+          Count each till's cash box against its own figure above, not against
+          the combined total — a shortfall you cannot place on one machine is
+          much harder to explain. Then match the DuitNow figure against your
+          Public Bank merchant records, and the card figure against the
+          terminal's batch report, counting sales as well as amounts. A count
+          that matches but a total that does not usually means one sale went
+          through at the wrong amount.
         </span>
         {s.unverified > 0 && (
           <span className="warn">

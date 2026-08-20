@@ -25,12 +25,21 @@ export const TILLS = {
     name: "Windows till",
     methods: ["cash", "qr"],
     hasDrawer: true,
+    printsReceipts: true,
   },
   macbook: {
     id: "macbook",
     name: "MacBook till",
-    methods: ["qr", "card"],
+    // Cash included so this till can take the overflow when the queue builds.
+    // No drawer here, so keep a cash box beside it — and remember that means
+    // TWO floats to count at closing. The Sales tab breaks takings down by
+    // till for exactly that reason.
+    methods: ["cash", "qr", "card"],
     hasDrawer: false,
+    // No thermal printer on this machine. Left true, every sale would open a
+    // print dialog the cashier has to dismiss, which is the last thing you
+    // want mid-queue. Set true if you connect a printer to it.
+    printsReceipts: false,
   },
 };
 

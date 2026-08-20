@@ -172,13 +172,16 @@ export default function Sell({ products, till, me }) {
     setLines([]);
 
     const saved = await recordSale(sale, till.id, me);
-    setPrintJob({
-      ...sale,
-      receiptNo: saved.receiptNo,
-      till: till.id,
-      cashierName: me?.name || "",
-      at: Date.now(),
-    });
+    // Only queue a receipt on a till that can actually print one.
+    if (till.printsReceipts !== false) {
+      setPrintJob({
+        ...sale,
+        receiptNo: saved.receiptNo,
+        till: till.id,
+        cashierName: me?.name || "",
+        at: Date.now(),
+      });
+    }
     notify(
       `${saved.receiptNo} · ${formatRM(sale.total)} ${METHODS[method].label}`,
     );
