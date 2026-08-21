@@ -28,6 +28,12 @@ export default function Sell({ products, till, me }) {
   const [printJob, setPrintJob] = useState(null);
   const scanRef = useRef(null);
   const linesRef = useRef(null);
+  /* One sale at a time. finish() is async, so two fast taps on Cash — or a
+     held-down Enter — can both get through before React re-renders and takes
+     the modal away. That records the sale twice: two receipt numbers, double
+     takings, and a float that will not balance. A ref, not state, because it
+     has to be true on the very next line, not after a render. */
+  const submitting = useRef(false);
 
   const active = useMemo(
     () => products.filter((p) => p.active !== false),
@@ -147,6 +153,9 @@ export default function Sell({ products, till, me }) {
   /* ---------- finish a sale ---------- */
 
   async function finish(method, extra = {}) {
+    if (submitting.current) return;
+    submitting.current = true;
+
     const sale = {
       items: cart.lines.map((l) => ({
         productId: l.productId,
@@ -192,6 +201,20 @@ export default function Sell({ products, till, me }) {
         if (!r.ok) notify(r.message, "warn");
       });
     }
+
+    submitting.current = false;
+  }
+
+  /* ---------- no sale ---------- */
+
+  /* Opening the drawer without ringing anything up: breaking a note, adding
+     to the float, fixing a wrong-change complaint. Cashiers will do it one way
+     or another — better through a button that logs a line in the helper window
+     than by leaving the drawer unlocked all day. */
+  async function noSale() {
+    notify("Opening drawer — no sale");
+    const r = await openDrawer("no sale");
+    if (!r.ok) notify(r.message, "warn");
   }
 
   // Print once the receipt has actually rendered.
@@ -353,11 +376,18 @@ export default function Sell({ products, till, me }) {
                   <small className="mono">{formatRM(cart.total)}</small>
                 </button>
               ))}
-              {cart.lines.length > 0 && (
-                <button className="voidbtn" onClick={() => setLines([])}>
-                  Clear sale
-                </button>
-              )}
+              <div className="pay-extra">
+                {cart.lines.length > 0 && (
+                  <button className="voidbtn" onClick={() => setLines([])}>
+                    Clear sale
+                  </button>
+                )}
+                {till.hasDrawer && (
+                  <button className="voidbtn" onClick={noSale}>
+                    Open drawer
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

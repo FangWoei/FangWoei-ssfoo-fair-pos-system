@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useToast } from "../App";
 import { newProductRef, removeProduct, saveProduct } from "../lib/db";
 import {
@@ -38,6 +38,73 @@ export default function Admin({ products }) {
   // product. Used to show what each product actually takes part in.
   const allPromos = [...PROMOTIONS, ...promotionsFromProducts(products)];
 
+  /* Configuration faults that are invisible until a customer is standing
+     there. None of these throw an error; they just make the till behave
+     wrongly, so they have to be surfaced deliberately. */
+  const problems = useMemo(() => {
+    const out = [];
+    const ids = new Set(products.map((p) => p.id));
+
+    // Two products on one barcode: the scanner picks whichever the search
+    // happens to find first, so a scan silently rings up the wrong thing.
+    const byBarcode = {};
+    for (const p of products) {
+      const b = String(p.barcode || "")
+        .trim()
+        .toLowerCase();
+      if (!b) continue;
+      (byBarcode[b] ||= []).push(p.name);
+    }
+    for (const [code, sharing] of Object.entries(byBarcode)) {
+      if (sharing.length > 1) {
+        out.push({
+          kind: "Duplicate barcode",
+          detail: `${code} is on ${sharing.length} products: ${sharing.join(", ")}. A scan will ring up whichever comes first.`,
+        });
+      }
+    }
+
+    // A promotion pointing at a product that has since been deleted. The
+    // promotion still exists and still demands a gift that cannot be scanned.
+    for (const p of products) {
+      const gift = giftConfigOf(p);
+      if (!gift) continue;
+      const missingTriggers = (gift.triggerIds || []).filter(
+        (id) => !ids.has(id),
+      );
+      if (missingTriggers.length) {
+        out.push({
+          kind: "Deleted product in a promotion",
+          detail: `${p.name} counts ${missingTriggers.length} product(s) toward its buy quantity that no longer exist. Re-open it and re-tick the list.`,
+        });
+      }
+      for (const g of gift.giftGroups) {
+        const missingGifts = g.productIds.filter((id) => !ids.has(id));
+        if (missingGifts.length) {
+          out.push({
+            kind: "Deleted product in a promotion",
+            detail: `${p.name} gives away ${missingGifts.length} product(s) that no longer exist. The promotion can never be completed.`,
+          });
+        }
+      }
+    }
+
+    // Gift-only stock no promotion claims: it can never be sold and never be
+    // given away, so it is simply unsellable.
+    for (const p of products) {
+      if (!p.giftOnly) continue;
+      const { freeIn } = promoRolesFor(p, allPromos);
+      if (!freeIn.length) {
+        out.push({
+          kind: "Unsellable product",
+          detail: `${p.name} is marked free-gift-only but no promotion gives it away. It cannot be scanned at all.`,
+        });
+      }
+    }
+
+    return out;
+  }, [products, allPromos]);
+
   return (
     <div className="page">
       <div className="page-head">
@@ -51,6 +118,20 @@ export default function Admin({ products }) {
           Add product
         </button>
       </div>
+
+      {problems.length > 0 && (
+        <div className="problems">
+          <strong>
+            {problems.length} thing{problems.length === 1 ? "" : "s"} to fix
+            before the fair
+          </strong>
+          {problems.map((p, i) => (
+            <span key={i}>
+              <b>{p.kind}:</b> {p.detail}
+            </span>
+          ))}
+        </div>
+      )}
 
       {products.length === 0 ? (
         <div style={{ color: "var(--text-dim)", maxWidth: 460 }}>

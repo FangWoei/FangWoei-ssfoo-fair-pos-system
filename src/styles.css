@@ -804,12 +804,20 @@ textarea {
 .paybtn.card {
   background: var(--pay-card);
 }
+.pay-extra {
+  display: flex;
+  gap: 8px;
+}
+.pay-extra .voidbtn {
+  flex: 1;
+}
 .voidbtn {
   height: 38px;
   border-radius: var(--r-sm);
   color: var(--ink-dim);
   font-size: 13px;
   border: 1px solid var(--line-strong);
+  background: var(--paper);
 }
 .voidbtn:hover {
   color: var(--red);
@@ -1129,6 +1137,28 @@ textarea {
   background: #fdf1ef;
   border-color: #f6d5cf;
   color: var(--red);
+}
+
+.problems {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-width: 900px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border-radius: var(--r);
+  background: var(--amber-wash);
+  border: 1px solid #f3dfbc;
+  color: #8a5000;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.problems strong {
+  color: #6e4000;
+  font-size: 13.5px;
+}
+.problems b {
+  font-weight: 600;
 }
 
 .preview {
