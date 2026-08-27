@@ -84,14 +84,24 @@ export const PROMOTIONS = [
   },
 
   {
-    id: "diaper-4-160",
-    name: "Diapers — any 4 for RM160",
-    short: "4 for RM160",
+    id: "diaper-bundles",
+    name: "Diapers — 2 for RM70, 4 for RM160",
+    short: "Diaper bundle",
     type: "bundle-fixed",
 
-    // Sizes mix freely: 3 NB + 1 S is a deal, so is 4 XXL.
-    require: { tag: "diaper", qty: 4 },
-    price: 16000,
+    /* Sizes mix freely in both tiers: 1 NB + 1 S is a pair, 3 NB + 1 S is a
+       four. The till works out the cheapest combination of tiers for whatever
+       is in the basket, so nobody has to arrange the packs by hand.
+
+       Bundles are taken LARGEST FIRST, not cheapest first. Four packs rings
+       as one four at RM160 even though two pairs would come to RM140, because
+       the four is the advertised deal and it carries the free trial box.
+       Splitting it into pairs would hand out the gift on a cheaper basket. */
+    require: { tag: "diaper", qty: 2 },
+    tiers: [
+      { qty: 2, price: 7000 },
+      { qty: 4, price: 16000 },
+    ],
   },
 
   {
@@ -204,6 +214,16 @@ export function giftConfigOf(product) {
 
   if (buyQty <= 0 || !giftGroups.length) return null;
   return { buyQty, giftGroups, triggerIds };
+}
+
+/** "2 for RM70 ×2" reads better on a tape than a list of every bundle. */
+function summariseTiers(sizes) {
+  const counts = {};
+  for (const q of sizes) counts[q] = (counts[q] || 0) + 1;
+  return Object.entries(counts)
+    .sort((a, b) => Number(b[0]) - Number(a[0]))
+    .map(([qty, times]) => (times > 1 ? `${times}×${qty}` : `${qty}`))
+    .join(" + ");
 }
 
 /* ────────────────────────────── the engine ────────────────────────────── */
@@ -480,11 +500,20 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     }
   }
 
-  /* N at a fixed price, plus any scanned gifts.
+  /* Fixed-price bundles: "any 4 for RM160", and now several tiers at once.
      Mixing is allowed unless `sameBy` says otherwise. */
   function runBundleFixed(promo) {
     const pool = eligible.filter((l) => matchesSelector(l, promo.require));
     if (!pool.length) return;
+
+    // One tier or many — a single qty/price is just a one-tier deal.
+    const tiers = (
+      promo.tiers || [{ qty: promo.require.qty, price: promo.price }]
+    )
+      .map((t) => ({ qty: Number(t.qty), price: Number(t.price) }))
+      .filter((t) => t.qty > 0 && t.price >= 0)
+      .sort((a, b) => a.qty - b.qty);
+    if (!tiers.length) return;
 
     // Group first — the 600ml trio may not mix flavours, diapers may mix sizes.
     const groups = {};
@@ -497,63 +526,71 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
     let saving = 0;
 
     for (const [groupKey, group] of Object.entries(groups)) {
-      // Work in units, because sizes in one deal can have different prices.
+      // Work in units: sizes in one deal can have different prices.
       const units = [];
       for (const l of group) for (let i = 0; i < l.qty; i++) units.push(l);
-      if (units.length < promo.require.qty) continue;
+      if (!units.length) continue;
 
-      /* Dearest first. Four nappies for RM160 should consume the four most
-         expensive in the basket — that is the cheapest outcome for the
-         customer, and the one they would arrange by hand if they knew the
-         rule. */
+      /* Dearest first, so a bundle swallows the most expensive items — the
+         cheapest outcome for the customer, and the one they would arrange
+         themselves if they knew the rule. */
       units.sort((a, b) => b.unitPrice - a.unitPrice);
+      const n = units.length;
 
+      /* Biggest bundle first, then the next, then singles.
+         NOT the cheapest combination. Four packs is the headline deal and must
+         ring as one four, even where two pairs would come to less — the pairs
+         are a smaller offer, and the four carries the free trial box with it.
+         Charging the cheaper split would hand out the gift on a cheaper
+         basket, which is not the deal that is advertised.
+
+         A tier is still skipped where it would cost MORE than the units are
+         worth at retail: an offer must never be a penalty. */
       const perLine = {};
-      let used = 0;
-      let sets = 0;
+      const used = [];
+      let taken = 0;
 
-      while (units.length - used >= promo.require.qty) {
-        const set = units.slice(used, used + promo.require.qty);
-        const atFullPrice = set.reduce((t, u) => t + u.unitPrice, 0);
+      for (const t of [...tiers].sort((a, b) => b.qty - a.qty)) {
+        while (n - taken >= t.qty) {
+          const set = units.slice(taken, taken + t.qty);
+          const retail = set.reduce((sum, u) => sum + u.unitPrice, 0);
+          if (t.price >= retail) break; // and every later block is cheaper still
 
-        /* Only apply where it actually saves money. Units are sorted dearest
-           first, so once a set costs less at retail than the deal price, every
-           later set does too — stop. */
-        if (atFullPrice <= promo.price) break;
+          // Split the bundle price across its units in proportion to their own
+          // price, so every line shows something defensible on the receipt.
+          let left = t.price;
+          set.forEach((u, k) => {
+            const share =
+              k === set.length - 1
+                ? left
+                : retail
+                  ? Math.round((t.price * u.unitPrice) / retail)
+                  : Math.round(t.price / set.length);
+            left -= share;
+            perLine[u.key] = (perLine[u.key] || 0) + share;
+          });
 
-        // Split the deal price across its units in proportion to their price,
-        // so each line is charged something defensible on the receipt.
-        let left = promo.price;
-        set.forEach((u, i) => {
-          const share =
-            i === set.length - 1
-              ? left
-              : Math.round((promo.price * u.unitPrice) / atFullPrice);
-          left -= share;
-          perLine[u.key] = (perLine[u.key] || 0) + share;
-        });
-
-        saving += atFullPrice - promo.price;
-        used += promo.require.qty;
-        sets++;
+          saving += retail - t.price;
+          used.push(t.qty);
+          taken += t.qty;
+        }
       }
 
-      if (!sets) continue;
-
-      // Whatever did not make it into a deal is charged normally.
-      for (let i = used; i < units.length; i++) {
-        const u = units[i];
+      // Whatever did not make it into a bundle is charged normally.
+      for (let k = taken; k < n; k++) {
+        const u = units[k];
         perLine[u.key] = (perLine[u.key] || 0) + u.unitPrice;
       }
 
+      if (!used.length) continue;
+
+      const label = summariseTiers(used);
       for (const l of group) {
         linePrices[l.key] = perLine[l.key] ?? l.unitPrice * l.qty;
-        lineNotes[l.key] = `${promo.short}${
-          groupKey !== "*" ? ` · ${groupKey}` : ""
-        }`;
+        lineNotes[l.key] =
+          `${label}${groupKey !== "*" ? ` · ${groupKey}` : ""}`;
       }
-
-      times += sets;
+      times += used.length;
     }
 
     if (!times) return;
