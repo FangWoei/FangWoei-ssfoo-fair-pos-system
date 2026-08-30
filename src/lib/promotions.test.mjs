@@ -185,29 +185,51 @@ check("4 packs = RM160, the four-tier wins over two pairs", () => {
   assert.equal(total(lines, applyPromotions(lines)), 16000);
 });
 
-check("5 packs = one four plus one at full price", () => {
+check("5 packs = buy 4 free 1, RM143.60", () => {
   const lines = [diaP("NB", 4290, 5)];
-  assert.equal(total(lines, applyPromotions(lines)), 16000 + 4290);
+  assert.equal(total(lines, applyPromotions(lines)), 14360);
 });
 
-check("6 packs = a four and a pair", () => {
-  const lines = [diaP("NB", 4290, 3), diaP("S", 4290, 3)];
-  assert.equal(total(lines, applyPromotions(lines)), 16000 + 7000);
+check("5 mixed sizes also RM143.60", () => {
+  const lines = [
+    diaP("NB", 4290, 1),
+    diaP("S", 4290, 1),
+    diaP("M", 4290, 1),
+    diaP("L", 4290, 1),
+    diaP("XL", 4290, 1),
+  ];
+  assert.equal(total(lines, applyPromotions(lines)), 14360);
 });
 
-check("8 packs = two fours, and two trial boxes owed", () => {
-  const lines = [diaP("NB", 4290, 8)];
+check("the trial box is OFFERED, never owed — payment is not blocked", () => {
+  // Pants L, XL and XXL have no trial stock. The sale must still complete.
+  const lines = [diaP("L", 3590, 4)];
   const r = applyPromotions(lines);
-  assert.equal(total(lines, r), 32000);
-  assert.equal(r.blockers.find((b) => /trial/i.test(b.label)).need, 2);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+});
+
+check("a trial box is still free when one IS scanned", () => {
+  const lines = [diaP("NB", 4290, 4), trial(1)];
+  const r = applyPromotions(lines);
+  assert.equal(r.linePrices[lines[1].key], 0);
+  assert.equal(total(lines, r), 16000);
+});
+
+check("6 packs = a five plus one at full price", () => {
+  const lines = [diaP("NB", 4290, 3), diaP("S", 4290, 3)];
+  assert.equal(total(lines, applyPromotions(lines)), 14360 + 4290);
+});
+
+check("10 packs = two fives", () => {
+  const lines = [diaP("NB", 4290, 10)];
+  assert.equal(total(lines, applyPromotions(lines)), 28720);
 });
 
 check("with different prices per size, the DEAREST go into the bundle", () => {
-  // 2 premium at RM50, 3 basic at RM30. The four-tier would cost RM160 to
-  // cover RM160 of stock — no saving, so it is skipped. The pair takes the
-  // two premium packs, the basics are charged at RM30 each.
+  // 2 premium at RM50, 3 basic at RM30 = RM190 retail across five packs.
+  // The five-tier covers all of them for RM143.60.
   const lines = [diaP("XXL", 5000, 2), diaP("NB", 3000, 3)];
-  assert.equal(total(lines, applyPromotions(lines)), 7000 + 9000);
+  assert.equal(total(lines, applyPromotions(lines)), 14360);
 });
 
 check("a bundle that costs the customer MORE is not applied", () => {
@@ -221,13 +243,11 @@ check("a bundle that costs the customer MORE is not applied", () => {
   );
 });
 
-check("4 packs still earn the free trial box", () => {
+check("4 packs make the trial box available, without demanding it", () => {
   const lines = [diaP("NB", 4290, 4)];
   const r = applyPromotions(lines);
-  assert.equal(
-    r.blockers.some((b) => /trial/i.test(b.label)),
-    true,
-  );
+  assert.equal(r.blockers.length, 0);
+  assert.equal(checkCanAdd(P_TRIAL, lines).ok, true);
 });
 
 check("a bundle is skipped when it saves the customer nothing", () => {
@@ -713,6 +733,52 @@ check("gifts are counted once, not once per promotion", () => {
     .filter((a) => a.id.startsWith("gift-"))
     .reduce((sum, a) => sum + a.saving, 0);
   assert.equal(giftSaving, 2 * 1350 + 4 * 1350);
+});
+
+/* ---------- pants L/XL/XXL: no trial box, so buy 4 free 1 instead ---------- */
+
+const pants = (size, q, price = 3590) =>
+  line(`Pants ${size}`, price, q, ["diaperpants"]);
+
+check("4 packs: nothing free yet", () => {
+  const lines = [pants("L", 4)];
+  assert.equal(total(lines, applyPromotions(lines)), 4 * 3590);
+});
+
+check("5 packs = RM143.60 — four paid, one free", () => {
+  const lines = [pants("L", 5)];
+  assert.equal(total(lines, applyPromotions(lines)), 14360);
+});
+
+check("sizes mix: 2L + 2XL + 1XXL still gives one free", () => {
+  const lines = [pants("L", 2), pants("XL", 2), pants("XXL", 1)];
+  assert.equal(total(lines, applyPromotions(lines)), 14360);
+});
+
+check("10 packs = two free", () => {
+  const lines = [pants("L", 10)];
+  assert.equal(total(lines, applyPromotions(lines)), 8 * 3590);
+});
+
+check("where prices differ, the CHEAPEST pack is the free one", () => {
+  const lines = [pants("L", 4, 3590), pants("XL", 1, 3990)];
+  // free = one at RM35.90, so pay 3×35.90 + 39.90
+  assert.equal(total(lines, applyPromotions(lines)), 3 * 3590 + 3990);
+});
+
+check("pants never earn a trial box, and never block payment", () => {
+  const lines = [pants("L", 5)];
+  const r = applyPromotions(lines);
+  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
+});
+
+check("pants are not part of the RM70 / RM160 diaper bundles", () => {
+  const lines = [pants("L", 2)];
+  const r = applyPromotions(lines);
+  assert.equal(
+    r.applied.some((a) => a.id === "diaper-bundles"),
+    false,
+  );
 });
 
 let failed = 0;

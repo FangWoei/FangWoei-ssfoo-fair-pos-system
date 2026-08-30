@@ -101,7 +101,30 @@ export const PROMOTIONS = [
     tiers: [
       { qty: 2, price: 7000 },
       { qty: 4, price: 16000 },
+      // Buy 4, fifth free: five packs for RM143.60, being 4 × RM35.90.
+      // Taken before the four because bundles go largest first, which is what
+      // makes the choice work: scan a fifth DIAPER and the sale becomes this
+      // deal; scan a TRIAL BOX instead and it stays as four for RM160.
+      { qty: 5, price: 14360 },
     ],
+  },
+
+  {
+    id: "diaper-pants-b1g1",
+    name: "Diaper pants L / XL / XXL — buy 4 free 1",
+    short: "Buy 4 free 1",
+    type: "mix-free",
+
+    /* These three sizes have no trial box, so they cannot join the promotion
+       below. They get a whole free pack instead — five packs for the price of
+       four, which at RM35.90 is RM143.60, or RM28.72 a pack.
+
+       Tag ONLY these three `diaperpants`, and do NOT also tag them `diaper`,
+       or they would join the RM70/RM160 bundles and be owed a trial box that
+       does not exist. */
+    require: { tag: "diaperpants" },
+    buyQty: 4,
+    freeQty: 1,
   },
 
   {
@@ -115,6 +138,12 @@ export const PROMOTIONS = [
     gifts: [
       { tag: "diapertrial", qty: 1, label: "Diaper trial box (any one size)" },
     ],
+
+    /* The trial box is OFFERED, not owed. Pants L, XL and XXL have no trial
+       stock, and a customer may prefer a fifth diaper anyway — so the sale
+       must be able to complete without one. Payment is never blocked; the box
+       is simply free if it is scanned. */
+    optionalGifts: true,
   },
 ];
 
@@ -293,8 +322,11 @@ export function giftLedger(lines, promotions = PROMOTIONS) {
         allowed: 0,
         have: 0,
         lines: [],
+        // Only owed if EVERY promotion offering it insists on it.
+        required: false,
       };
       entry.allowed += sets * gift.qty;
+      if (!promo.optionalGifts) entry.required = true;
       if (!entry.promos.includes(promo.name)) entry.promos.push(promo.name);
       bySig.set(sig, entry);
     }
@@ -480,7 +512,7 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
       }
     }
 
-    if (entry.have < entry.allowed) {
+    if (entry.required && entry.have < entry.allowed) {
       const short = entry.allowed - entry.have;
       blockers.push({
         promo: entry.promos.join(" + "),
