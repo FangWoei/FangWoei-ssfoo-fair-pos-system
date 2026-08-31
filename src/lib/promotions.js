@@ -38,6 +38,24 @@
                                  full carton: __ for RM__   TODO
      3. Old packaging 600ml   → a product priced RM9.00
      6. Accessories Cleaning  → buy 2 free 1 on that product
+
+   The old "3 for RM75 + 3 free 200ml bottles" 600ml deal has been removed.
+   In its place: buy 3 × 600ml (at least 2 of the 3 must be Oat & Milk), get
+   a 4th 600ml bottle of ANY flavour free — still RM75 total.
+
+   Written below as "4 bottles, RM75 total, at least 2 must be Oat" rather
+   than "3 charged + a separate free line", even though the two are the same
+   money. Reason: the free bottle is the SAME product as the paid ones
+   (unlike the old deal, whose free gift was a different, smaller product).
+   The scan-gate/gift-ledger machinery below tracks free stock by matching it
+   against a DIFFERENT product than the one that earned it; when "earn" and
+   "free" are the identical product, that machinery can mark the wrong unit
+   free (one of the three PAYING bottles) instead of the fourth. Pricing the
+   whole group of 4 as one bundle sidesteps that risk and lands on the same
+   total. The only behavioural difference from "3 for RM75, plus a free 4th
+   if taken": bringing only 3 bottles (not taking a 4th) does NOT get RM75 —
+   full retail applies until a 4th joins them. That matches how the deal is
+   meant to work — the free bottle is real stock meant to leave the stall.
    ───────────────────────────────────────────────────────────────────────── */
 
 /* The free-trial-box promotion was removed along with the tiered diaper plan:
@@ -54,15 +72,16 @@
 
 export const PROMOTIONS = [
   {
-    id: "h2t600-trio",
-    name: "Head to Toe 600ml — 3 for RM75",
-    short: "3 for RM75 + free 200ml",
+    id: "h2t600-buy3free1",
+    name: "Head to Toe 600ml — buy 3 free 1",
+    short: "Buy 3 free 1 (600ml)",
     type: "bundle-fixed",
 
-    /* 3 bottles of new-packaging 600ml. Flavours may now be MIXED, but every
-       three must include at least one Oat & Milk — there is a lot of Oat left
-       and this moves it. Two Calming and one CV is not a set; two Calming and
-       one Oat is. */
+    /* 4 bottles of new-packaging 600ml — the 3 bought plus the free 4th —
+       ring together as one RM75 group. Flavours may be MIXED, but at least
+       2 of the 4 must be Oat & Milk, which is what moves the Oat stock.
+       3 Calming + 1 Oat does not qualify; 2 Calming + 2 Oat does; 4 Oat
+       does (trivially, since every one of them matches). */
     /* Matched by name so it works without tagging anything. If you rename one
        of these products, change it here too — or tag them `h2t600new` plus a
        `flavour:` tag and swap `names` for `tag`. */
@@ -72,22 +91,15 @@ export const PROMOTIONS = [
         "BB HTT600 OAT - WTP",
         "BB HTT600 CV - WTP",
       ],
-      qty: 3,
-      /* Three of ONE flavour always qualifies. A MIXED three only qualifies
-         if one of them is Oat — which is what shifts the Oat stock without
-         stopping someone buying three of the same. */
+      qty: 4,
+      /* At least `min` of the group must be Oat & Milk. */
       sameOrInclude: {
         names: ["BB HTT600 OAT - WTP"],
         label: "BB HTT600 OAT - WTP",
+        min: 2,
       },
     },
     price: 7500,
-
-    // Free with every complete set of 3. These must be scanned into the sale.
-    gifts: [
-      { names: ["BB HTT200 CALMING"], qty: 1, label: "BB HTT200 CALMING" },
-      { names: ["BB HTT200 OAT"], qty: 2, label: "BB HTT200 OAT" },
-    ],
   },
 
   {
@@ -220,11 +232,16 @@ export function giftConfigOf(product) {
 }
 
 /**
- * Forms sets under "all the same, OR mixed with at least one X".
+ * Forms sets under "at least `min` of the group must match X" (min defaults
+ * to 1 — "all the same, or mixed with at least one X" when every unit in
+ * the pool happens to match X, one set is all that's needed to satisfy it).
  *
- * Same-flavour sets are taken first, then mixed ones around each remaining
- * Oat. Doing it the other way round would spend Oats on mixes that a
- * same-flavour three did not need, and lose sets the basket had earned.
+ * Each set claims exactly `min` matching units first — dearest matching
+ * ones, since the pool arrives sorted dearest-first — then fills the rest
+ * of the set from whatever's left, dearest first. A set that can't find
+ * `min` matching units among what remains is not formed at all: the
+ * leftover units are charged normally rather than "rounding down" a set
+ * that never earned the deal.
  *
  * Units are expected sorted dearest first, so the bundles swallow the most
  * expensive bottles — the cheapest outcome for the customer.
@@ -232,33 +249,35 @@ export function giftConfigOf(product) {
 function buildSets(units, qty, mustSel) {
   const pool = [...units];
   const sets = [];
-  const keyOf = (u) => u.productId ?? u.name;
+  const min = mustSel ? Math.max(1, Number(mustSel.min) || 1) : 0;
 
   for (;;) {
     if (pool.length < qty) break;
-
-    // 1. three of one product
-    const byKey = {};
-    for (const u of pool) (byKey[keyOf(u)] ||= []).push(u);
-    const same = Object.values(byKey).find((g) => g.length >= qty);
-    if (same) {
-      const set = same.slice(0, qty);
-      for (const u of set) pool.splice(pool.indexOf(u), 1);
-      sets.push(set);
+    if (!mustSel) {
+      sets.push(pool.splice(0, qty));
       continue;
     }
 
-    // 2. a mix, built around one of the required bottles
-    if (!mustSel) break;
-    const i = pool.findIndex((u) => matchesSelector(u, mustSel));
-    if (i < 0) break;
-    const must = pool.splice(i, 1)[0];
-    const rest = pool.splice(0, qty - 1);
-    if (rest.length < qty - 1) {
-      pool.push(must, ...rest);
+    const matchPos = [];
+    for (let i = 0; i < pool.length; i++) {
+      if (matchesSelector(pool[i], mustSel)) matchPos.push(i);
+    }
+    if (matchPos.length < min) break; // not enough matching stock left
+
+    const claimPos = matchPos.slice(0, min);
+    const claimed = claimPos.map((i) => pool[i]);
+    // Remove highest indices first so earlier indices stay valid mid-splice.
+    [...claimPos].sort((a, b) => b - a).forEach((i) => pool.splice(i, 1));
+
+    const restNeeded = qty - claimed.length;
+    if (pool.length < restNeeded) {
+      // Can't complete this set — put the claimed units back and stop.
+      pool.push(...claimed);
+      pool.sort((a, b) => b.unitPrice - a.unitPrice);
       break;
     }
-    sets.push([must, ...rest]);
+    const rest = pool.splice(0, restNeeded);
+    sets.push([...claimed, ...rest]);
   }
 
   return { sets, leftover: pool };
@@ -455,13 +474,14 @@ function needMessage(promo, lines) {
      basket already has three bottles and what it is missing is an Oat. */
   const sameOr = promo.require.sameOrInclude;
   if (sameOr) {
+    const min = Math.max(1, Number(sameOr.min) || 1);
     if (have < promo.require.qty) {
       return `${promo.name} needs ${promo.require.qty - have} more`;
     }
     // Enough bottles, but no valid set — so the mix is the problem.
-    return `${promo.name}: three of ONE flavour, or a mix including at least one ${
+    return `${promo.name}: needs at least ${min} × ${
       sameOr.label || (sameOr.names || [])[0] || "required bottle"
-    }`;
+    } in every ${promo.require.qty}`;
   }
 
   const must = promo.require.mustInclude;
