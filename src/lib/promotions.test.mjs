@@ -23,15 +23,11 @@ const line = (name, unitPrice, qty, tags) => ({
 });
 
 // The catalogue this promo touches. Prices are placeholders except RM75.
-const c600 = (q) =>
-  line("H2T 600ml Calming", 3500, q, ["h2t600new", "flavour:calming"]);
-const o600 = (q) =>
-  line("H2T 600ml Oat", 3500, q, ["h2t600new", "flavour:oat"]);
-const v600 = (q) =>
-  line("H2T 600ml Vanilla", 3500, q, ["h2t600new", "flavour:vanilla"]);
-const calm200 = (q) =>
-  line("H2T 200ml Calming", 1200, q, ["h2t200", "flavour:calming"]);
-const oat200 = (q) => line("H2T 200ml Oat", 1200, q, ["h2t200", "flavour:oat"]);
+const c600 = (q) => line("BB HTT600 CALMING - WTP", 2690, q, []);
+const o600 = (q) => line("BB HTT600 OAT - WTP", 2690, q, []);
+const v600 = (q) => line("BB HTT600 CV - WTP", 2690, q, []);
+const calm200 = (q) => line("BB HTT200 CALMING", 1350, q, []);
+const oat200 = (q) => line("BB HTT200 OAT", 1350, q, []);
 
 const total = (lines, r) =>
   lines.reduce(
@@ -46,9 +42,9 @@ const total = (lines, r) =>
 /* ---------- promo 2: the worked example from the brief ---------- */
 
 check(
-  "3 Calming 600ml + 1 Calming 200ml + 2 Oat 200ml = RM75, nothing blocked",
+  "2 Calming + 1 Oat 600ml + the three gifts = RM75, nothing blocked",
   () => {
-    const lines = [c600(3), calm200(1), oat200(2)];
+    const lines = [c600(2), o600(1), calm200(1), oat200(2)];
     const r = applyPromotions(lines);
     assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
     assert.equal(total(lines, r), 7500);
@@ -57,7 +53,7 @@ check(
 );
 
 check("gifts missing entirely -> payment blocked, both gifts named", () => {
-  const lines = [c600(3)];
+  const lines = [c600(2), o600(1)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 2);
   assert.match(r.blockers[0].message, /Scan 1 more/);
@@ -65,7 +61,7 @@ check("gifts missing entirely -> payment blocked, both gifts named", () => {
 });
 
 check("one gift short -> blocked, and it says how many more", () => {
-  const lines = [c600(3), calm200(1), oat200(1)];
+  const lines = [c600(2), o600(1), calm200(1), oat200(1)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 1);
   assert.match(r.blockers[0].message, /Scan 1 more/);
@@ -76,41 +72,40 @@ check("only 2 bottles -> no promo, full price, no blocker", () => {
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 0);
   assert.equal(r.applied.length, 0);
-  assert.equal(total(lines, r), 7000);
+  assert.equal(total(lines, r), 2 * 2690);
 });
 
-check("flavours cannot be mixed: 2 calming + 1 vanilla is not a set", () => {
+check("a mixed three without Oat is not a set: 2 calming + 1 CV", () => {
   const lines = [c600(2), v600(1)];
   const r = applyPromotions(lines);
-  assert.equal(r.applied.length, 0);
-  assert.equal(total(lines, r), 10500);
+  assert.equal(total(lines, r), 3 * 2690);
 });
 
-check("two separate flavours, 3 each, = two sets and doubled gifts", () => {
+check("six bottles with three Oat = two sets and doubled gifts", () => {
   const lines = [c600(3), o600(3), calm200(2), oat200(4)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
   assert.equal(total(lines, r), 15000); // 2 × RM75
 });
 
-check("6 of one flavour = 2 sets, needs double gifts", () => {
-  const lines = [c600(6), calm200(1), oat200(2)];
+check("6 bottles with 2 Oat = 2 sets, needs double gifts", () => {
+  const lines = [c600(4), o600(2), calm200(1), oat200(2)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 2); // 1 more calming, 2 more oat
 });
 
 check("4th bottle is charged normally on top of the set", () => {
-  const lines = [c600(4), calm200(1), oat200(2)];
+  const lines = [c600(3), o600(1), calm200(1), oat200(2)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 0);
-  assert.equal(total(lines, r), 7500 + 3500);
+  assert.equal(total(lines, r), 7500 + 2690);
 });
 
 check("a 200ml bought beyond the free entitlement is charged", () => {
-  const lines = [c600(3), calm200(2), oat200(2)];
+  const lines = [c600(2), o600(1), calm200(2), oat200(2)];
   const r = applyPromotions(lines);
   assert.equal(r.blockers.length, 0);
-  assert.equal(total(lines, r), 7500 + 1200); // second calming is a normal sale
+  assert.equal(total(lines, r), 7500 + 1350); // second calming is a normal sale
 });
 
 /* ---------- promo 4: kids, buy 1 free 1, mixing allowed ---------- */
@@ -147,166 +142,99 @@ check("4 of the same kids item -> 2 free", () => {
 const dia = (size, q) => line(`Diaper ${size}`, 4500, q, ["diaper"]);
 const trial = (q) => line("Diaper trial box M", 1500, q, ["diapertrial"]);
 
-check("4 packs mixed sizes + trial box = RM160 and the trial free", () => {
-  const lines = [dia("M", 2), dia("L", 2), trial(1)];
-  const r = applyPromotions(lines);
-  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
-  assert.equal(total(lines, r), 16000);
-});
-
-/* ---------- diaper bundles: 2 for RM70, 4 for RM160, sizes mixed ---------- */
+/* ---------- diapers: buy 2, free 1, sizes mixed ---------- */
 
 const diaP = (size, price, q) => line(`Diaper ${size}`, price, q, ["diaper"]);
+const D = 4250; // RM42.50 each
 
-check("2 packs of DIFFERENT sizes = RM70", () => {
-  const lines = [diaP("NB", 4290, 1), diaP("S", 4290, 1)];
-  assert.equal(total(lines, applyPromotions(lines)), 7000);
+check("1 pack is full price", () => {
+  const lines = [diaP("NB", D, 1)];
+  assert.equal(total(lines, applyPromotions(lines)), 4250);
 });
 
-check("2 of one size = RM70 too", () => {
-  const lines = [diaP("M", 4290, 2)];
-  assert.equal(total(lines, applyPromotions(lines)), 7000);
+check("2 packs is full price — nothing free yet", () => {
+  const lines = [diaP("NB", D, 2)];
+  assert.equal(total(lines, applyPromotions(lines)), 8500);
 });
 
-check("1 pack alone is full price", () => {
-  const lines = [diaP("NB", 4290, 1)];
-  assert.equal(total(lines, applyPromotions(lines)), 4290);
+check("3 packs = RM85.00, the third is free", () => {
+  const lines = [diaP("NB", D, 3)];
+  assert.equal(total(lines, applyPromotions(lines)), 8500);
 });
 
-check("3 packs = one pair plus one at full price", () => {
-  const lines = [diaP("NB", 4290, 2), diaP("S", 4290, 1)];
-  assert.equal(total(lines, applyPromotions(lines)), 7000 + 4290);
+check("3 DIFFERENT sizes also RM85.00", () => {
+  const lines = [diaP("NB", D, 1), diaP("S", D, 1), diaP("M", D, 1)];
+  assert.equal(total(lines, applyPromotions(lines)), 8500);
 });
 
-check("4 packs = RM160, the four-tier wins over two pairs", () => {
-  // Largest bundle first, not cheapest: two pairs would be RM140, but the
-  // four is the advertised deal and it carries the free trial box.
-  const lines = [diaP("NB", 4290, 3), diaP("S", 4290, 1)];
-  assert.equal(total(lines, applyPromotions(lines)), 16000);
+check("4 packs = pay for 3", () => {
+  const lines = [diaP("NB", D, 4)];
+  assert.equal(total(lines, applyPromotions(lines)), 12750);
 });
 
-check("5 packs = buy 4 free 1, RM143.60", () => {
-  const lines = [diaP("NB", 4290, 5)];
-  assert.equal(total(lines, applyPromotions(lines)), 14360);
+check("6 packs = pay for 4", () => {
+  const lines = [diaP("NB", D, 2), diaP("S", D, 2), diaP("L", D, 2)];
+  assert.equal(total(lines, applyPromotions(lines)), 17000);
 });
 
-check("5 mixed sizes also RM143.60", () => {
-  const lines = [
-    diaP("NB", 4290, 1),
-    diaP("S", 4290, 1),
-    diaP("M", 4290, 1),
-    diaP("L", 4290, 1),
-    diaP("XL", 4290, 1),
-  ];
-  assert.equal(total(lines, applyPromotions(lines)), 14360);
+check("9 packs = pay for 6", () => {
+  const lines = [diaP("NB", D, 9)];
+  assert.equal(total(lines, applyPromotions(lines)), 25500);
 });
 
-check("the trial box is OFFERED, never owed — payment is not blocked", () => {
-  // Pants L, XL and XXL have no trial stock. The sale must still complete.
-  const lines = [diaP("L", 3590, 4)];
-  const r = applyPromotions(lines);
-  assert.equal(r.blockers.length, 0, JSON.stringify(r.blockers));
-});
+check(
+  "where sizes differ in price, the CHEAPEST of the three goes free",
+  () => {
+    const lines = [diaP("XXL", 5000, 2), diaP("NB", 3000, 1)];
+    assert.equal(total(lines, applyPromotions(lines)), 10000);
+  },
+);
 
-check("a trial box is still free when one IS scanned", () => {
-  const lines = [diaP("NB", 4290, 4), trial(1)];
-  const r = applyPromotions(lines);
-  assert.equal(r.linePrices[lines[1].key], 0);
-  assert.equal(total(lines, r), 16000);
-});
-
-check("6 packs = a five plus one at full price", () => {
-  const lines = [diaP("NB", 4290, 3), diaP("S", 4290, 3)];
-  assert.equal(total(lines, applyPromotions(lines)), 14360 + 4290);
-});
-
-check("10 packs = two fives", () => {
-  const lines = [diaP("NB", 4290, 10)];
-  assert.equal(total(lines, applyPromotions(lines)), 28720);
-});
-
-check("with different prices per size, the DEAREST go into the bundle", () => {
-  // 2 premium at RM50, 3 basic at RM30 = RM190 retail across five packs.
-  // The five-tier covers all of them for RM143.60.
-  const lines = [diaP("XXL", 5000, 2), diaP("NB", 3000, 3)];
-  assert.equal(total(lines, applyPromotions(lines)), 14360);
-});
-
-check("a bundle that costs the customer MORE is not applied", () => {
-  // Two packs at RM30 = RM60, under the RM70 pair price.
-  const lines = [diaP("NB", 3000, 2)];
-  const r = applyPromotions(lines);
-  assert.equal(total(lines, r), 6000);
-  assert.equal(
-    r.applied.some((a) => a.id === "diaper-bundles"),
-    false,
-  );
-});
-
-check("4 packs make the trial box available, without demanding it", () => {
-  const lines = [diaP("NB", 4290, 4)];
-  const r = applyPromotions(lines);
-  assert.equal(r.blockers.length, 0);
-  assert.equal(checkCanAdd(P_TRIAL, lines).ok, true);
-});
-
-check("a bundle is skipped when it saves the customer nothing", () => {
-  // A four-tier priced at exactly what the four packs are worth is no offer
-  // at all, so it must not be applied — an offer may never be a penalty.
-  const promo = {
-    id: "test",
-    name: "test",
-    short: "test",
-    type: "bundle-fixed",
-    require: { tag: "diaper", qty: 2 },
-    tiers: [{ qty: 4, price: 17160 }],
-  };
-  const lines = [diaP("NB", 4290, 4)];
-  assert.equal(total(lines, applyPromotions(lines, [promo])), 17160 - 0 - 0);
-  // 4 × RM42.90 = RM171.60, the same as the tier, so nothing changes.
+check("nothing blocks payment — no trial box in this plan", () => {
+  const lines = [diaP("NB", D, 4)];
+  assert.equal(applyPromotions(lines).blockers.length, 0);
 });
 
 /* ---------- the scan gate: gift barcodes refused until earned ---------- */
 
 const prod = (name, price, tags) => ({ name, unitPrice: price, tags });
-const P_CALM200 = {
-  ...prod("H2T 200ml Calming", 1200, ["h2t200", "flavour:calming"]),
-  giftOnly: true,
-};
-const P_OAT200 = {
-  ...prod("H2T 200ml Oat", 1200, ["h2t200", "flavour:oat"]),
-  giftOnly: true,
-};
+const P_CALM200 = { ...prod("BB HTT200 CALMING", 1350, []), giftOnly: true };
+const P_OAT200 = { ...prod("BB HTT200 OAT", 1350, []), giftOnly: true };
 const P_TRIAL = {
   ...prod("Diaper trial box M", 1500, ["diapertrial"]),
   giftOnly: true,
 };
-const P_600 = prod("H2T 600ml Calming", 3500, ["h2t600new", "flavour:calming"]);
+const P_600 = prod("BB HTT600 CALMING - WTP", 2690, []);
 
 check("empty cart: the free 200ml barcode is refused", () => {
   const r = checkCanAdd(P_CALM200, []);
   assert.equal(r.ok, false);
 });
 
-check("THREE of one flavour: the gift barcodes unlock", () => {
-  const cart = [c600(3)];
+check("three bottles including an Oat: the gift barcodes unlock", () => {
+  const cart = [c600(2), o600(1)];
   assert.equal(checkCanAdd(P_CALM200, cart).ok, true);
   assert.equal(checkCanAdd(P_OAT200, cart).ok, true);
 });
 
-check("2 Calming + 1 Vanilla is not a set — gift stays refused", () => {
+check("2 Calming + 1 CV has no Oat — gift stays refused", () => {
   const r = checkCanAdd(P_CALM200, [c600(2), v600(1)]);
   assert.equal(r.ok, false);
 });
 
+check("3 Calming DOES unlock the gifts — same flavour needs no Oat", () => {
+  assert.equal(checkCanAdd(P_CALM200, [c600(3)]).ok, true);
+  assert.equal(checkCanAdd(P_OAT200, [c600(3)]).ok, true);
+});
+
 check("entitlement is one Calming 200ml only — a second is refused", () => {
-  const cart = [c600(3), calm200(1)];
+  const cart = [c600(2), o600(1), calm200(1)];
   assert.equal(checkCanAdd(P_CALM200, cart).ok, false);
 });
 
 check("entitlement is two Oat 200ml — third is refused", () => {
-  assert.equal(checkCanAdd(P_OAT200, [c600(3), oat200(1)]).ok, true);
-  assert.equal(checkCanAdd(P_OAT200, [c600(3), oat200(2)]).ok, false);
+  assert.equal(checkCanAdd(P_OAT200, [c600(2), o600(1), oat200(1)]).ok, true);
+  assert.equal(checkCanAdd(P_OAT200, [c600(2), o600(1), oat200(2)]).ok, false);
 });
 
 check("a normal product is never gated", () => {
@@ -314,10 +242,48 @@ check("a normal product is never gated", () => {
   assert.equal(checkCanAdd(prod("Kopi O", 400, []), []).ok, true);
 });
 
-check("earnedSets counts per flavour, not in total", () => {
-  assert.equal(earnedSets(PROMOTIONS[0], [c600(2), v600(1)]), 0);
-  assert.equal(earnedSets(PROMOTIONS[0], [c600(3)]), 1);
+check("three of ONE flavour always qualifies, Oat or not", () => {
+  assert.equal(earnedSets(PROMOTIONS[0], [c600(3)]), 1, "3 Calming");
+  assert.equal(earnedSets(PROMOTIONS[0], [v600(3)]), 1, "3 CV");
+  assert.equal(earnedSets(PROMOTIONS[0], [o600(3)]), 1, "3 Oat");
+});
+
+check("a MIXED three only qualifies with an Oat in it", () => {
+  assert.equal(earnedSets(PROMOTIONS[0], [c600(2), o600(1)]), 1);
+  assert.equal(earnedSets(PROMOTIONS[0], [c600(1), v600(1), o600(1)]), 1);
+  assert.equal(
+    earnedSets(PROMOTIONS[0], [c600(2), v600(1)]),
+    0,
+    "mixed, no Oat",
+  );
+  assert.equal(
+    earnedSets(PROMOTIONS[0], [c600(1), v600(2)]),
+    0,
+    "mixed, no Oat",
+  );
+});
+
+check("a mixed three without Oat is charged at full price", () => {
+  const lines = [c600(2), v600(1)];
+  assert.equal(total(lines, applyPromotions(lines)), 3 * 2690);
+});
+
+check("same-flavour sets are taken before mixed ones", () => {
+  // 3 Calming + 3 CV is two same-flavour sets and needs no Oat at all.
   assert.equal(earnedSets(PROMOTIONS[0], [c600(3), v600(3)]), 2);
+  // 4 Calming + 1 CV + 1 Oat: one same set, then a mix around the Oat.
+  assert.equal(earnedSets(PROMOTIONS[0], [c600(4), v600(1), o600(1)]), 2);
+});
+
+check("5 of one flavour = one set plus two at full price", () => {
+  const lines = [c600(5)];
+  assert.equal(total(lines, applyPromotions(lines)), 7500 + 2 * 2690);
+});
+
+check("the refusal explains the Oat condition on a mixed three", () => {
+  const r = checkCanAdd(P_OAT200, [c600(2), v600(1)]);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /OAT - WTP/i);
 });
 
 /* ---------- product-configured gift offers: buy 3 shampoo, free 2 ---------- */
@@ -743,27 +709,6 @@ const pants = (size, q, price = 3590) =>
 check("4 packs: nothing free yet", () => {
   const lines = [pants("L", 4)];
   assert.equal(total(lines, applyPromotions(lines)), 4 * 3590);
-});
-
-check("5 packs = RM143.60 — four paid, one free", () => {
-  const lines = [pants("L", 5)];
-  assert.equal(total(lines, applyPromotions(lines)), 14360);
-});
-
-check("sizes mix: 2L + 2XL + 1XXL still gives one free", () => {
-  const lines = [pants("L", 2), pants("XL", 2), pants("XXL", 1)];
-  assert.equal(total(lines, applyPromotions(lines)), 14360);
-});
-
-check("10 packs = two free", () => {
-  const lines = [pants("L", 10)];
-  assert.equal(total(lines, applyPromotions(lines)), 8 * 3590);
-});
-
-check("where prices differ, the CHEAPEST pack is the free one", () => {
-  const lines = [pants("L", 4, 3590), pants("XL", 1, 3990)];
-  // free = one at RM35.90, so pay 3×35.90 + 39.90
-  assert.equal(total(lines, applyPromotions(lines)), 3 * 3590 + 3990);
 });
 
 check("pants never earn a trial box, and never block payment", () => {

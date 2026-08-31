@@ -40,6 +40,18 @@
      6. Accessories Cleaning  → buy 2 free 1 on that product
    ───────────────────────────────────────────────────────────────────────── */
 
+/* The free-trial-box promotion was removed along with the tiered diaper plan:
+   it keyed off buying 4 packs, which means nothing under buy-2-free-1.
+
+   To bring it back, add an entry of type 'bundle-gift' with
+   require: { tag: 'diaper', qty: N }, gifts: [{ tag: 'diapertrial', qty: 1,
+   label: 'Diaper trial box (any one size)' }] and optionalGifts: true.
+
+   Until then the eight trial-box products are marked "free-gift stock only"
+   with no promotion giving them away, so they cannot be scanned at all. The
+   Products page flags them as unsellable. Untick that box on each one if you
+   want to hand them out or sell them. */
+
 export const PROMOTIONS = [
   {
     id: "h2t600-trio",
@@ -47,25 +59,34 @@ export const PROMOTIONS = [
     short: "3 for RM75 + free 200ml",
     type: "bundle-fixed",
 
-    // 3 bottles of new-packaging 600ml, all the SAME flavour. Calming Scent,
-    // Oat & Milk and Vanilla each qualify; a mixed three does not.
-    require: { tag: "h2t600new", qty: 3, sameBy: "flavour" },
+    /* 3 bottles of new-packaging 600ml. Flavours may now be MIXED, but every
+       three must include at least one Oat & Milk — there is a lot of Oat left
+       and this moves it. Two Calming and one CV is not a set; two Calming and
+       one Oat is. */
+    /* Matched by name so it works without tagging anything. If you rename one
+       of these products, change it here too — or tag them `h2t600new` plus a
+       `flavour:` tag and swap `names` for `tag`. */
+    require: {
+      names: [
+        "BB HTT600 CALMING - WTP",
+        "BB HTT600 OAT - WTP",
+        "BB HTT600 CV - WTP",
+      ],
+      qty: 3,
+      /* Three of ONE flavour always qualifies. A MIXED three only qualifies
+         if one of them is Oat — which is what shifts the Oat stock without
+         stopping someone buying three of the same. */
+      sameOrInclude: {
+        names: ["BB HTT600 OAT - WTP"],
+        label: "BB HTT600 OAT - WTP",
+      },
+    },
     price: 7500,
 
     // Free with every complete set of 3. These must be scanned into the sale.
     gifts: [
-      {
-        tag: "h2t200",
-        flavour: "calming",
-        qty: 1,
-        label: "Head to Toe 200ml Calming Scent",
-      },
-      {
-        tag: "h2t200",
-        flavour: "oat",
-        qty: 2,
-        label: "Head to Toe 200ml Oat & Milk",
-      },
+      { names: ["BB HTT200 CALMING"], qty: 1, label: "BB HTT200 CALMING" },
+      { names: ["BB HTT200 OAT"], qty: 2, label: "BB HTT200 OAT" },
     ],
   },
 
@@ -84,66 +105,19 @@ export const PROMOTIONS = [
   },
 
   {
-    id: "diaper-bundles",
-    name: "Diapers — 2 for RM70, 4 for RM160",
-    short: "Diaper bundle",
+    id: "diaper-4-free-1",
+    name: "Diapers — buy 4, free 1",
+    short: "Buy 4 free 1",
     type: "bundle-fixed",
 
-    /* Sizes mix freely in both tiers: 1 NB + 1 S is a pair, 3 NB + 1 S is a
-       four. The till works out the cheapest combination of tiers for whatever
-       is in the basket, so nobody has to arrange the packs by hand.
+    /* Five packs for RM143.60, being 4 × RM35.90 with the fifth free.
+       Sizes mix freely — 2 tape + 3 pants is a set, so is 5 of one size.
 
-       Bundles are taken LARGEST FIRST, not cheapest first. Four packs rings
-       as one four at RM160 even though two pairs would come to RM140, because
-       the four is the advertised deal and it carries the free trial box.
-       Splitting it into pairs would hand out the gift on a cheaper basket. */
-    require: { tag: "diaper", qty: 2 },
-    tiers: [
-      { qty: 2, price: 7000 },
-      { qty: 4, price: 16000 },
-      // Buy 4, fifth free: five packs for RM143.60, being 4 × RM35.90.
-      // Taken before the four because bundles go largest first, which is what
-      // makes the choice work: scan a fifth DIAPER and the sale becomes this
-      // deal; scan a TRIAL BOX instead and it stays as four for RM160.
-      { qty: 5, price: 14360 },
-    ],
-  },
-
-  {
-    id: "diaper-pants-b1g1",
-    name: "Diaper pants L / XL / XXL — buy 4 free 1",
-    short: "Buy 4 free 1",
-    type: "mix-free",
-
-    /* These three sizes have no trial box, so they cannot join the promotion
-       below. They get a whole free pack instead — five packs for the price of
-       four, which at RM35.90 is RM143.60, or RM28.72 a pack.
-
-       Tag ONLY these three `diaperpants`, and do NOT also tag them `diaper`,
-       or they would join the RM70/RM160 bundles and be owed a trial box that
-       does not exist. */
-    require: { tag: "diaperpants" },
-    buyQty: 4,
-    freeQty: 1,
-  },
-
-  {
-    id: "diaper-trial",
-    name: "Diapers — 4 packs, free trial box",
-    short: "4 packs + free trial box",
-    type: "bundle-gift",
-
-    // Sizes may be mixed, so no sameBy here.
-    require: { tag: "diaper", qty: 4 },
-    gifts: [
-      { tag: "diapertrial", qty: 1, label: "Diaper trial box (any one size)" },
-    ],
-
-    /* The trial box is OFFERED, not owed. Pants L, XL and XXL have no trial
-       stock, and a customer may prefer a fifth diaper anyway — so the sale
-       must be able to complete without one. Payment is never blocked; the box
-       is simply free if it is scanned. */
-    optionalGifts: true,
+       A fixed bundle price rather than "pay for 4 at the shelf price", so the
+       total is RM143.60 whatever the individual sizes are priced at. Change
+       the price here, not in Products. */
+    require: { tag: "diaper", qty: 5 },
+    price: 14360,
   },
 ];
 
@@ -245,6 +219,51 @@ export function giftConfigOf(product) {
   return { buyQty, giftGroups, triggerIds };
 }
 
+/**
+ * Forms sets under "all the same, OR mixed with at least one X".
+ *
+ * Same-flavour sets are taken first, then mixed ones around each remaining
+ * Oat. Doing it the other way round would spend Oats on mixes that a
+ * same-flavour three did not need, and lose sets the basket had earned.
+ *
+ * Units are expected sorted dearest first, so the bundles swallow the most
+ * expensive bottles — the cheapest outcome for the customer.
+ */
+function buildSets(units, qty, mustSel) {
+  const pool = [...units];
+  const sets = [];
+  const keyOf = (u) => u.productId ?? u.name;
+
+  for (;;) {
+    if (pool.length < qty) break;
+
+    // 1. three of one product
+    const byKey = {};
+    for (const u of pool) (byKey[keyOf(u)] ||= []).push(u);
+    const same = Object.values(byKey).find((g) => g.length >= qty);
+    if (same) {
+      const set = same.slice(0, qty);
+      for (const u of set) pool.splice(pool.indexOf(u), 1);
+      sets.push(set);
+      continue;
+    }
+
+    // 2. a mix, built around one of the required bottles
+    if (!mustSel) break;
+    const i = pool.findIndex((u) => matchesSelector(u, mustSel));
+    if (i < 0) break;
+    const must = pool.splice(i, 1)[0];
+    const rest = pool.splice(0, qty - 1);
+    if (rest.length < qty - 1) {
+      pool.push(must, ...rest);
+      break;
+    }
+    sets.push([must, ...rest]);
+  }
+
+  return { sets, leftover: pool };
+}
+
 /** "2 for RM70 ×2" reads better on a tape than a list of every bundle. */
 function summariseTiers(sizes) {
   const counts = {};
@@ -283,7 +302,27 @@ export function earnedSets(promo, lines) {
   }
 
   const qty = pool.reduce((s, l) => s + l.qty, 0);
-  return Math.floor(qty / promo.require.qty);
+
+  /* "All the same, or mixed with an Oat" cannot be counted by division: two
+     Calming and one CV is three bottles and no set at all. Build the sets and
+     count them, or the gifts get promised on a basket that never earned them. */
+  if (promo.require.sameOrInclude) {
+    const units = [];
+    for (const l of pool) for (let i = 0; i < l.qty; i++) units.push(l);
+    units.sort((a, b) => b.unitPrice - a.unitPrice);
+    return buildSets(units, promo.require.qty, promo.require.sameOrInclude).sets
+      .length;
+  }
+
+  const sets = Math.floor(qty / promo.require.qty);
+  const must = promo.require.mustInclude;
+  if (!must) return sets;
+
+  const mustQty = pool
+    .filter((l) => matchesSelector(l, must))
+    .reduce((s, l) => s + l.qty, 0);
+
+  return Math.min(sets, Math.floor(mustQty / (must.min || 1)));
 }
 
 /**
@@ -310,10 +349,15 @@ export function giftLedger(lines, promotions = PROMOTIONS) {
     if (!sets) continue;
 
     for (const gift of promo.gifts || []) {
+      /* The signature must cover EVERY way a gift can be identified. Leave
+         `names` out and two different name-matched gifts hash to the same
+         key, collapse into one entitlement, and the second one is charged
+         instead of given. */
       const sig = JSON.stringify([
         gift.tag || "",
         gift.flavour || "",
         [...(gift.productIds || [])].sort(),
+        [...(gift.names || [])].map((n) => String(n).toLowerCase()).sort(),
       ]);
       const entry = bySig.get(sig) || {
         sig,
@@ -407,6 +451,33 @@ function needMessage(promo, lines) {
   );
   const have = pool.reduce((s, l) => s + l.qty, 0);
 
+  /* Name the actual constraint. "Scan 1 more" is useless advice when the
+     basket already has three bottles and what it is missing is an Oat. */
+  const sameOr = promo.require.sameOrInclude;
+  if (sameOr) {
+    if (have < promo.require.qty) {
+      return `${promo.name} needs ${promo.require.qty - have} more`;
+    }
+    // Enough bottles, but no valid set — so the mix is the problem.
+    return `${promo.name}: three of ONE flavour, or a mix including at least one ${
+      sameOr.label || (sameOr.names || [])[0] || "required bottle"
+    }`;
+  }
+
+  const must = promo.require.mustInclude;
+  if (must) {
+    const mustQty = pool
+      .filter((l) => matchesSelector(l, must))
+      .reduce((s, l) => s + l.qty, 0);
+    if (mustQty < (must.min || 1)) {
+      return `${promo.name} needs at least ${must.min || 1} × ${
+        must.label || must.flavour
+      } in every ${promo.require.qty}`;
+    }
+    const short = promo.require.qty - (have % promo.require.qty);
+    return `${promo.name} needs ${short} more — ${have} scanned so far`;
+  }
+
   if (promo.require.sameBy === "flavour") {
     const byFlavour = {};
     for (const l of pool) {
@@ -448,10 +519,27 @@ export function flavourOf(line) {
  */
 function matchesSelector(line, sel) {
   if (!sel) return false;
+
+  /* Match by product NAME as well as by id or tag. Names are the one handle
+     that already exists on every product without anyone setting it up, which
+     matters when a rule has to be corrected mid-trading and there is no time
+     to go through the catalogue adding tags. */
+  if (Array.isArray(sel.names) && sel.names.length) {
+    const n = String(line.name || "")
+      .trim()
+      .toLowerCase();
+    return sel.names.some((x) => String(x).trim().toLowerCase() === n);
+  }
+
   if (Array.isArray(sel.productIds) && sel.productIds.length) {
     return sel.productIds.includes(line.productId ?? line.id);
   }
-  if (!sel.tag) return false;
+  /* A selector may name a flavour on its own — "at least one Oat in every
+     three" says nothing about tags, because the pool has already been narrowed
+     to 600ml bottles by the promotion's own requirement. */
+  if (!sel.tag) {
+    return sel.flavour ? flavourOf(line) === sel.flavour : false;
+  }
   return (
     hasTag(line, sel.tag) && (!sel.flavour || flavourOf(line) === sel.flavour)
   );
@@ -568,6 +656,52 @@ export function applyPromotions(lines, promotions = PROMOTIONS) {
          themselves if they knew the rule. */
       units.sort((a, b) => b.unitPrice - a.unitPrice);
       const n = units.length;
+
+      /* Where a set must contain something specific, build the sets by hand:
+         one Oat first, then fill the rest from whatever is dearest. Left to
+         the plain dearest-first sweep, three Calmings would form a "set" that
+         does not qualify, and the customer would be charged the deal price
+         for a basket that never earned it. */
+      const setRule = promo.require.sameOrInclude || promo.require.mustInclude;
+      if (setRule) {
+        const perLine = {};
+        const built = buildSets(units, promo.require.qty, setRule);
+        const used = [];
+
+        for (const set of built.sets) {
+          const retail = set.reduce((sum, u) => sum + u.unitPrice, 0);
+          if (promo.price >= retail) {
+            built.leftover.push(...set); // an offer, never a penalty
+            continue;
+          }
+          let left = promo.price;
+          set.forEach((u, k) => {
+            const share =
+              k === set.length - 1
+                ? left
+                : retail
+                  ? Math.round((promo.price * u.unitPrice) / retail)
+                  : Math.round(promo.price / set.length);
+            left -= share;
+            perLine[u.key] = (perLine[u.key] || 0) + share;
+          });
+          saving += retail - promo.price;
+          used.push(promo.require.qty);
+        }
+
+        for (const u of built.leftover) {
+          perLine[u.key] = (perLine[u.key] || 0) + u.unitPrice;
+        }
+
+        if (used.length) {
+          for (const l of group) {
+            linePrices[l.key] = perLine[l.key] ?? l.unitPrice * l.qty;
+            lineNotes[l.key] = promo.short;
+          }
+          times += used.length;
+        }
+        continue;
+      }
 
       /* Biggest bundle first, then the next, then singles.
          NOT the cheapest combination. Four packs is the headline deal and must

@@ -977,3 +977,407 @@ export function exportPdf(sales, scopeLabel) {
 
   doc.save(`SS-FOO-sales-${scopeLabel.replace(/\s+/g, "-")}-${stamp()}.pdf`);
 }
+
+/* ============================== CLAIM REPORT ============================== */
+
+/**
+ * The buy-4-free-1 claim, for the supplier.
+ *
+ * Every sale that gave a free diaper away, with the whole basket shown — a
+ * customer paying for shampoo and diapers together is one transaction, and a
+ * claim showing only half of it invites questions.
+ */
+export function exportClaimExcel(claim, periodLabel) {
+  const wb = XLSX.utils.book_new();
+  wb.Props = {
+    Title: `${SHOP.name} diaper claim — ${periodLabel}`,
+    Author: SHOP.name,
+  };
+
+  /* ---- Sheet 1: the claim ---- */
+  {
+    const W = 4;
+    const ws = {};
+    let [r, merges] = masthead(
+      ws,
+      periodLabel,
+      "Diaper claim — buy 4 free 1",
+      W,
+    );
+
+    r = band(ws, r, "CLAIM", W, merges);
+    r = put(ws, r, [
+      ["Sales with a free diaper", S.label],
+      [claim.totals.sales, S.num],
+    ]);
+    r = put(ws, r, [
+      ["Diapers sold in these sales", S.label],
+      [claim.totals.diapers, S.num],
+    ]);
+    r = put(ws, r, [
+      ["Complete sets of 5", S.label],
+      [claim.totals.sets, S.num],
+    ]);
+    r = put(ws, r, [
+      ["FREE DIAPERS TO CLAIM", S.bigLabel],
+      [claim.totals.free, S.bigNum],
+    ]);
+    r++;
+
+    r = band(ws, r, "FREE DIAPERS BY SIZE", W, merges);
+    r = put(ws, r, [
+      ["Size", S.head(AMBER)],
+      ["Free given", S.head(AMBER)],
+      ["", S.head(AMBER)],
+      ["", S.head(AMBER)],
+    ]);
+    claim.freeBySize.forEach(([name, n], i) => {
+      const z = i % 2 === 1;
+      r = put(ws, r, [
+        [name, z ? S.z : S.cell],
+        [n, z ? S.zNum : S.num],
+        ["", z ? S.z : S.cell],
+        ["", z ? S.z : S.cell],
+      ]);
+    });
+    r++;
+
+    r = band(ws, r, "TAKINGS IN THESE SALES", W, merges);
+    r = put(ws, r, [
+      ["Diaper lines", S.label],
+      [rm(claim.totals.diaperTakings), S.money],
+    ]);
+    r = put(ws, r, [
+      ["Whole sales, all products", S.label],
+      [rm(claim.totals.saleTakings), S.money],
+    ]);
+
+    seal(ws, r, W, merges);
+    ws["!cols"] = [{ wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 14 }];
+    ws["!rows"] = [{ hpt: 27 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Claim");
+  }
+
+  /* ---- Sheet 2: one row per qualifying sale ---- */
+  {
+    const W = 11;
+    const ws = {};
+    let [r, merges] = masthead(ws, periodLabel, "Sales with a free diaper", W);
+    const headRow = r;
+    r = put(
+      ws,
+      r,
+      [
+        "Receipt",
+        "Date",
+        "Time",
+        "Till",
+        "Cashier",
+        "Diapers",
+        "Sets of 5",
+        "Free given",
+        "Diaper amount",
+        "Other items",
+        "Sale total",
+      ].map((c) => [c, S.head(INK)]),
+    );
+
+    claim.rows.forEach((row, i) => {
+      const z = i % 2 === 1;
+      const c = z ? S.z : S.cell;
+      const n = z ? S.zNum : S.num;
+      const m = z ? S.zMoney : S.money;
+      r = put(ws, r, [
+        [row.receiptNo, c],
+        [dateStr(row.at), c],
+        [timeStr(row.at), c],
+        [TILLS[row.till]?.name || row.till, c],
+        [row.cashier, c],
+        [row.diaperQty, n],
+        [row.sets, n],
+        [row.free, z ? { ...S.zNum, font: font({ bold: true }) } : S.numBold],
+        [rm(row.diaperTotal), m],
+        [row.otherQty, n],
+        [rm(row.saleTotal), m],
+      ]);
+    });
+
+    const lastData = r - 1;
+    r++;
+    r = put(ws, r, [
+      ["TOTAL", S.bigLabel],
+      ["", S.bigLabel],
+      ["", S.bigLabel],
+      ["", S.bigLabel],
+      ["", S.bigLabel],
+      [claim.totals.diapers, S.bigNum],
+      [claim.totals.sets, S.bigNum],
+      [claim.totals.free, S.bigNum],
+      [rm(claim.totals.diaperTakings), S.bigMoney],
+      ["", S.bigLabel],
+      [rm(claim.totals.saleTakings), S.bigMoney],
+    ]);
+
+    seal(ws, r, W, merges);
+    ws["!cols"] = [
+      { wch: 11 },
+      { wch: 13 },
+      { wch: 8 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 11 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 13 },
+    ];
+    ws["!autofilter"] = {
+      ref: XLSX.utils.encode_range({
+        s: { r: headRow, c: 0 },
+        e: { r: lastData, c: W - 1 },
+      }),
+    };
+    ws["!freeze"] = { xSplit: 0, ySplit: headRow + 1 };
+    XLSX.utils.book_append_sheet(wb, ws, "Sales");
+  }
+
+  /* ---- Sheet 3: every line of every qualifying sale ---- */
+  {
+    const W = 8;
+    const ws = {};
+    let [r, merges] = masthead(ws, periodLabel, "Every line in these sales", W);
+    const headRow = r;
+    r = put(ws, r, [
+      ["Receipt", S.head(BLUE)],
+      ["Date", S.head(BLUE)],
+      ["Time", S.head(BLUE)],
+      ["Product", S.head(BLUE)],
+      ["Diaper?", S.head(BLUE)],
+      ["Qty", S.head(BLUE)],
+      ["Unit price", S.head(BLUE)],
+      ["Line total", S.head(BLUE)],
+    ]);
+    let i = 0;
+    for (const row of claim.rows) {
+      for (const [items, isD] of [
+        [row.diapers, "yes"],
+        [row.others, ""],
+      ]) {
+        for (const it of items) {
+          const z = i++ % 2 === 1;
+          r = put(ws, r, [
+            [row.receiptNo, z ? S.z : S.cell],
+            [dateStr(row.at), z ? S.z : S.cell],
+            [timeStr(row.at), z ? S.z : S.cell],
+            [it.name, z ? S.z : S.cell],
+            [isD, z ? S.z : S.cell],
+            [it.qty, z ? S.zNum : S.num],
+            [rm(it.unitPrice), z ? S.zMoney : S.money],
+            [rm(it.total), z ? S.zMoney : S.money],
+          ]);
+        }
+      }
+    }
+    seal(ws, r, W, merges);
+    ws["!cols"] = [
+      { wch: 11 },
+      { wch: 13 },
+      { wch: 8 },
+      { wch: 40 },
+      { wch: 9 },
+      { wch: 7 },
+      { wch: 12 },
+      { wch: 13 },
+    ];
+    ws["!autofilter"] = {
+      ref: XLSX.utils.encode_range({
+        s: { r: headRow, c: 0 },
+        e: { r, c: W - 1 },
+      }),
+    };
+    ws["!freeze"] = { xSplit: 0, ySplit: headRow + 1 };
+    XLSX.utils.book_append_sheet(wb, ws, "Line items");
+  }
+
+  XLSX.writeFile(
+    wb,
+    `SS-FOO-diaper-claim-${periodLabel.replace(/\s+/g, "-")}-${stamp()}.xlsx`,
+  );
+}
+
+export function exportClaimPdf(claim, periodLabel) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 14;
+
+  doc.setFillColor(...C.ink).rect(0, 0, W, 30, "F");
+  doc.setFillColor(...C.amber).rect(0, 30, W, 1.6, "F");
+  doc.setTextColor(255).setFont("helvetica", "bold").setFontSize(17);
+  doc.text(SHOP.name, M, 15);
+  doc
+    .setFont("helvetica", "normal")
+    .setFontSize(8.5)
+    .setTextColor(190, 195, 210);
+  doc.text(
+    [SHOP.company, ...(SHOP.lines || [])].filter(Boolean).join("   ·   "),
+    M,
+    22,
+  );
+  doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(255);
+  doc.text("DIAPER CLAIM — BUY 4 FREE 1", W - M, 15, { align: "right" });
+  doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(190, 195, 210);
+  doc.text(periodLabel, W - M, 21, { align: "right" });
+
+  const cards = [
+    ["FREE DIAPERS TO CLAIM", String(claim.totals.free), C.amber],
+    ["QUALIFYING SALES", String(claim.totals.sales), C.ink],
+    ["DIAPERS SOLD", String(claim.totals.diapers), C.ink],
+    ["SETS OF 5", String(claim.totals.sets), C.ink],
+  ];
+  const gap = 3;
+  const cw = (W - M * 2 - gap * (cards.length - 1)) / cards.length;
+  cards.forEach(([label, value, colour], i) => {
+    const x = M + i * (cw + gap);
+    doc.setFillColor(...C.paper).roundedRect(x, 38, cw, 20, 1.6, 1.6, "F");
+    doc
+      .setDrawColor(...C.rule)
+      .setLineWidth(0.2)
+      .roundedRect(x, 38, cw, 20, 1.6, 1.6, "S");
+    doc
+      .setFont("helvetica", "bold")
+      .setFontSize(6.4)
+      .setTextColor(...C.faint);
+    doc.text(label, x + 3.5, 44.5);
+    doc.setFontSize(15).setTextColor(...colour);
+    doc.text(value, x + 3.5, 53);
+  });
+
+  const table = (opts) =>
+    autoTable(doc, {
+      margin: { left: M, right: M },
+      styles: {
+        fontSize: 8.2,
+        cellPadding: 1.9,
+        lineColor: C.rule,
+        lineWidth: 0.1,
+      },
+      alternateRowStyles: { fillColor: C.paper },
+      ...opts,
+    });
+
+  const section = (title, y) => {
+    doc
+      .setFont("helvetica", "bold")
+      .setFontSize(9.5)
+      .setTextColor(...C.ink);
+    doc.text(title.toUpperCase(), M, y);
+    return y + 2;
+  };
+
+  table({
+    startY: section("Free diapers by size", 68),
+    head: [["Size", "Free given"]],
+    headStyles: {
+      fillColor: C.amber,
+      textColor: 255,
+      fontSize: 8,
+      fontStyle: "bold",
+    },
+    body: claim.freeBySize.map(([n, q]) => [n, q]),
+    foot: [["Total", claim.totals.free]],
+    footStyles: {
+      fillColor: [255, 255, 255],
+      textColor: C.ink,
+      fontStyle: "bold",
+    },
+    columnStyles: { 1: { halign: "right", cellWidth: 30 } },
+  });
+
+  table({
+    startY: section(
+      "Every sale that gave a free diaper",
+      doc.lastAutoTable.finalY + 9,
+    ),
+    head: [
+      [
+        "Receipt",
+        "Date",
+        "Time",
+        "Till",
+        "Cashier",
+        "Diapers",
+        "Free",
+        "Other items",
+        "Sale total",
+      ],
+    ],
+    headStyles: {
+      fillColor: C.ink,
+      textColor: 255,
+      fontSize: 7.8,
+      fontStyle: "bold",
+    },
+    styles: {
+      fontSize: 7.4,
+      cellPadding: 1.6,
+      lineColor: C.rule,
+      lineWidth: 0.1,
+    },
+    body: claim.rows.map((r) => [
+      r.receiptNo,
+      dateStr(r.at),
+      timeStr(r.at),
+      (TILLS[r.till]?.name || r.till).replace(" till", ""),
+      r.cashier,
+      r.diaperQty,
+      r.free,
+      r.otherQty || "",
+      money(r.saleTotal),
+    ]),
+    foot: [
+      [
+        "",
+        "",
+        "",
+        "",
+        "Total",
+        claim.totals.diapers,
+        claim.totals.free,
+        "",
+        money(claim.totals.saleTakings),
+      ],
+    ],
+    footStyles: {
+      fillColor: [255, 255, 255],
+      textColor: C.ink,
+      fontStyle: "bold",
+    },
+    columnStyles: {
+      5: { halign: "right" },
+      6: { halign: "right", fontStyle: "bold" },
+      7: { halign: "right" },
+      8: { halign: "right" },
+    },
+  });
+
+  const pages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    doc
+      .setDrawColor(...C.rule)
+      .setLineWidth(0.2)
+      .line(M, H - 12, W - M, H - 12);
+    doc
+      .setFont("helvetica", "normal")
+      .setFontSize(7)
+      .setTextColor(...C.faint);
+    doc.text(`${SHOP.name} — diaper claim, ${periodLabel}`, M, H - 8);
+    doc.text(`Page ${p} of ${pages}`, W - M, H - 8, { align: "right" });
+  }
+
+  doc.save(
+    `SS-FOO-diaper-claim-${periodLabel.replace(/\s+/g, "-")}-${stamp()}.pdf`,
+  );
+}
